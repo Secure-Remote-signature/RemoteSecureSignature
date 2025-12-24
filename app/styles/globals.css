@@ -11,7 +11,13 @@
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
-
+@theme
+{
+  --breakpoint-lg:100px;
+  --breakpoint-pi:800px;
+  --breakpoint-xl:1200px;
+  
+}
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
