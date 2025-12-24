@@ -2,8 +2,9 @@ import "@/app/styles/components.css"
 export default function Navbar()
 {
     return(
-        <div>
-            <h1 className="font-bold pi:text-[32px] 2xl:text-[40px]  text-[#4F46E5] pi:pl-3 2xl:pl-5">Secure Remote Signature</h1>
+        <div className="w-screen flex flex-row justify-between align-middle items-center pi:mx-3 2xl:mx-5">
+            <h1 className="font-black pi:text-[32px] 2xl:text-[40px]  text-[#4F46E5] ">Secure Remote Signature</h1>
+            <button className="font-bold text-[#ffffff] p-3 px-5 bg-indigo rounded-[30px] hover:opacity-70 text-[24px]">สร้างบัญชีใหม่</button>
         </div>
     );
 }
