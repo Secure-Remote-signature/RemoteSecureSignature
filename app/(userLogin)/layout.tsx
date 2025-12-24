@@ -23,10 +23,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-      {children}
-      </body>
-    </html>
+   <div className="grid grid-cols-5 grid-rows-10  ">
+        <div className="col-span-7 row-span-1 bg-amber-300">1
+            
+        </div>
+        <div className=" h-screen col-span-5 row-span-8 row-start-2 bg-amber-700"> 
+          {children}
+        </div>
+      </div>
   );
 }
