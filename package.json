@@ -1,0 +1,14 @@
+{
+  "name": "remote-secure-signature",
+  "private": true,
+  "scripts": {
+    "all": "start /B cmd /C \"npm run frontend\" && npm run backend",
+    "all:separate": "start \"Frontend\" cmd /K \"npm run frontend\" && start \"Backend\" cmd /K \"npm run backend\"",
+    "frontend": "cd frontend && npm run dev",
+    "backend": "cd backend && npm run dev",
+    "install:all": "cd frontend && npm install && cd ../backend && npm install",
+    "clean:frontend": "if exist \"frontend\\node_modules\" rmdir /s /q \"frontend\\node_modules\"",
+    "clean:backend": "if exist \"backend\\node_modules\" rmdir /s /q \"backend\\node_modules\"",
+    "clean": "npm run clean:frontend && npm run clean:backend"
+  }
+}
