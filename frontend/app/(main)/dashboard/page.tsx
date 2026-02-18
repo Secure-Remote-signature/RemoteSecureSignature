@@ -3,9 +3,10 @@
 import React, { useState } from 'react';
 import { Loader2, CheckCircle2 } from 'lucide-react'; // เรียกใช้ไอคอน (ถ้ายังไม่มีให้ npm install lucide-react)
 import "@/app/styles/components.css";
+import { useRouter } from 'next/navigation';
 
 export default function Dashboard() {
-    // สร้างตัวแปรจำลองสถานะ: 'idle' (ว่าง) หรือ 'working' (กำลังทำงาน)
+    const router = useRouter();
     const [machineStatus, setMachineStatus] = useState<'idle' | 'working'>('idle');
     const [incomingDoc, setIncomingDoc] = useState<{ sender: string, subject: string } | null>(null);
     const handleSimulateIncoming = () => {
@@ -93,7 +94,7 @@ export default function Dashboard() {
                             {/* ปุ่ม Action (ลงนาม / ปฏิเสธ) */}
                             <div className="flex gap-4 mt-4">
                                 <button 
-                                    onClick={() => alert("ไปหน้าลงนาม...")}
+                                    onClick={() => router.push('/signing?id=DOC-001')} // สมมติว่าไปหน้า signing page
                                     className="flex-1 bg-[#4F46E5] hover:bg-indigo-700 text-white font-bold py-2 md:py-3 rounded-full shadow-lg transition-transform active:scale-95"
                                 >
                                     ลงนามเอกสาร
