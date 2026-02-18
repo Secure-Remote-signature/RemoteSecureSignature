@@ -15,8 +15,8 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
   const menuItems = [
     { name: 'หน้าแรก', href: '/dashboard', icon: Home },
-    { name: 'ประวัติการลงนาม', href: '/history', icon: History }, // (สมมติ path ไว้ก่อน)
-    { name: 'การตั้งค่า', href: '/settings', icon: Settings },    // (สมมติ path ไว้ก่อน)
+    { name: 'ประวัติการลงนาม', href: '/logpage', icon: History }, // (สมมติ path ไว้ก่อน)
+    { name: 'การตั้งค่า', href: '/SettingPage', icon: Settings },    // (สมมติ path ไว้ก่อน)
   ];
 
   return (
