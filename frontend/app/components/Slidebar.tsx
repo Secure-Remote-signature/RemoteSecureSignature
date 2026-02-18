@@ -4,6 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Home, History, Settings, LogOut, X } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -12,6 +13,7 @@ interface SidebarProps {
 
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname(); // เช็คว่าเราอยู่หน้าไหน เพื่อ highlight เมนูนั้น
+  const router = useRouter();
 
   const menuItems = [
     { name: 'หน้าแรก', href: '/dashboard', icon: Home },
@@ -69,9 +71,9 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         <div className="p-4 border-t border-gray-100">
           <button 
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-500 hover:bg-red-50 transition-colors font-medium"
-            onClick={() => {
-                // ใส่ Logic ออกจากระบบตรงนี้
-                console.log("Logout");
+            onClick={() => { 
+                router.push('/login'); // สมมติว่า logout แล้วไปหน้า login
+                // console.log("Logout");
             }}
           >
             <LogOut size={22} />
