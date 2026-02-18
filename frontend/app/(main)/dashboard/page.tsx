@@ -3,11 +3,18 @@
 import React, { useState } from 'react';
 import { Loader2, CheckCircle2 } from 'lucide-react'; // เรียกใช้ไอคอน (ถ้ายังไม่มีให้ npm install lucide-react)
 import "@/app/styles/components.css";
+import { useRouter } from 'next/navigation';
 
 export default function Dashboard() {
-    // สร้างตัวแปรจำลองสถานะ: 'idle' (ว่าง) หรือ 'working' (กำลังทำงาน)
+    const router = useRouter();
     const [machineStatus, setMachineStatus] = useState<'idle' | 'working'>('idle');
-
+    const [incomingDoc, setIncomingDoc] = useState<{ sender: string, subject: string } | null>(null);
+    const handleSimulateIncoming = () => {
+        setIncomingDoc({
+            sender: "นางสาวสมหญิง ใจดี",
+            subject: "เอกสารอนุมัติจบการศึกษา"
+        });
+    };
     return (
         <div className="bg-vibrant-indigo h-full w-full flex items-center justify-center relative">
             
@@ -49,9 +56,60 @@ export default function Dashboard() {
                         </p>
                     </>
                 )}
-
             </div>
+                {/* === ส่วน MODAL แจ้งเตือนเอกสารเข้า (จะแสดงเมื่อ incomingDoc ไม่เป็น null) === */}
+            {incomingDoc && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                    {/* 1. ฉากหลังมืด (Overlay) */}
+                    <div className="absolute inset-0 bg-[#1e1b4b]/90 backdrop-blur-sm animate-fade-in" />
 
+                    {/* 2. กล่อง Modal */}
+                    <div className="relative bg-white w-full max-w-md rounded-[20px] shadow-2xl overflow-hidden animate-zoom-in">
+                        
+                        {/* Header สีม่วง */}
+                        <div className="bg-[#4F46E5] py-4 text-center">
+                            <h2 className="text-white text-xl md:text-2xl font-bold">
+                                มีเอกสารรอการลงนาม!!
+                            </h2>
+                        </div>
+
+                        {/* Body เนื้อหา */}
+                        <div className="p-6 md:p-8 flex flex-col gap-4">
+                            <div className="text-lg text-gray-700 space-y-2">
+                                <p>
+                                    <span className="font-bold text-gray-900">จาก: </span> 
+                                    {incomingDoc.sender}
+                                </p>
+                                <p>
+                                    <span className="font-bold text-gray-900">เรื่อง: </span> 
+                                    {incomingDoc.subject}
+                                </p>
+                            </div>
+
+                            {/* Link ดูเอกสาร */}
+                            <button className="text-[#4F46E5] underline font-medium hover:text-indigo-800 transition-colors self-center">
+                                ดูเอกสาร
+                            </button>
+
+                            {/* ปุ่ม Action (ลงนาม / ปฏิเสธ) */}
+                            <div className="flex gap-4 mt-4">
+                                <button 
+                                    onClick={() => router.push('/signing?id=DOC-001')} // สมมติว่าไปหน้า signing page
+                                    className="flex-1 bg-[#4F46E5] hover:bg-indigo-700 text-white font-bold py-2 md:py-3 rounded-full shadow-lg transition-transform active:scale-95"
+                                >
+                                    ลงนามเอกสาร
+                                </button>
+                                <button 
+                                    onClick={() => setIncomingDoc(null)} // ปิด Modal
+                                    className="flex-1 bg-[#DC2626] hover:bg-red-700 text-white font-bold py-2 md:py-3 rounded-full shadow-lg transition-transform active:scale-95"
+                                >
+                                    ปฏิเสธ
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
             {/* --- ปุ่มกดเล่นเพื่อเปลี่ยนสถานะ (ลบออกได้ตอนใช้งานจริง) --- */}
             <button 
                 onClick={() => setMachineStatus(prev => prev === 'idle' ? 'working' : 'idle')}
@@ -59,6 +117,12 @@ export default function Dashboard() {
             >
                 Test Status: {machineStatus.toUpperCase()}
             </button>
+            <button 
+                    onClick={handleSimulateIncoming}
+                    className="absolute bottom-15 right-5 bg-green-500/80 hover:bg-green-600 text-white px-3 py-1 rounded text-xs backdrop-blur-sm shadow-lg animate-pulse"
+                >
+                    Test Incoming Alert 🔔
+                </button>
 
         </div>
     );
