@@ -1,20 +1,36 @@
+"use client";
+
+import { useState } from "react";
 import "@/app/styles/globals.css";
 import MainNavbar from "../components/MainNavbar";
+import Slidebar from "../components/Slidebar";
 
-export default function RootLayout({
+export default function MainLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  
   return (
-    <div className="h-screen flex flex-col overflow-hidden">
-      <header className="w-full bg-white flex items-center border-b-[3px]">
-        <MainNavbar />
+    <div className="h-screen flex flex-col overflow-hidden bg-[#F9FAFB]">
+      
+      {/* ส่วนหัว (Header) */}
+      <header className="w-full bg-white border-b-[3px] shrink-0 relative z-30">
+        <MainNavbar onMenuClick={() => setIsSidebarOpen(true)} />
       </header>
 
-      <main className="flex-1 bg-[#F9FAFB] overflow-auto">
+      {/* แถบเมนู (Sidebar) */}
+      <Slidebar 
+        isOpen={isSidebarOpen} 
+        onClose={() => setIsSidebarOpen(false)} 
+      />
+
+      {/* เนื้อหาหลัก (Main Content) */}
+      <main className="flex-1 overflow-auto relative">
         {children}
       </main>
+
     </div>
   );
 }
