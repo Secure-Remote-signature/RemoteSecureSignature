@@ -57,7 +57,7 @@ export default function HistoryLogPage() {
       <div className="flex flex-row items-center justify-between p-2 border-b-2 border-gray-100 bg-white sticky top-0 z-20 shadow-sm">
         <div className="flex items-center gap-3">
             <div className="p-3 bg-indigo-100 rounded-xl text-indigo-700">
-                <FileText size={32} />
+                <FileText className="w-8 h-8 pi:w-5 pi:h-5 2xl:w-8 2xl:h-8" />
             </div>
             <div>
                 <h1 className="pi:text-[20px] 2xl:text-[32px] font-bold text-gray-800">ประวัติการลงนาม</h1>
@@ -65,15 +65,15 @@ export default function HistoryLogPage() {
             </div>
         </div>
         <div className="relative w-64 2xl:w-96 pi:w-64">
-          <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-            <Search className="h-6 w-6 text-gray-400" />
+          <div className="absolute inset-y-0 left-0 pl-3 flex items4 flex items-center pointer-events-none">
+            <Search className="2xl:h-6 2xl:w-6 pi:h-4 pi:w-4 text-gray-400" />
           </div>
           <input
             type="text"
             placeholder="ค้นหาเอกสาร..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="pi:text-[16px] 2xl:text-[20px] block w-full pl-12 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-[#4F46E5] focus:border-[#4F46E5] outline-none transition-all text-gray-900 placeholder:text-gray-400 bg-gray-50"
+            className="pi:text-[16px] 2xl:text-[20px] block w-full pi:pl-8 pi:py-2 2xl:pl-12 2xl:pr-4 2xl:py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-[#4F46E5] focus:border-[#4F46E5] outline-none transition-all text-gray-900 placeholder:text-gray-400 bg-gray-50"
           />
         </div>
       </div>
@@ -86,7 +86,7 @@ export default function HistoryLogPage() {
           {/* หัวตาราง (Sticky) */}
           <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
             <tr>
-              <th className="px-6 py-3 font-bold text-gray-600 pi:text-[16px] 2xl:text-[20px] whitespace-nowrap">รหัส</th>
+              <th className="pl-4 px-6 py-3 font-bold text-gray-600 pi:text-[16px] 2xl:text-[20px] whitespace-nowrap">รหัส</th>
               <th className="px-6 py-3 font-bold text-gray-600 pi:text-[16px] 2xl:text-[20px] whitespace-nowrap">ชื่อเอกสาร</th>
               <th className="px-6 py-3 font-bold text-gray-600 pi:text-[16px] 2xl:text-[20px] whitespace-nowrap">ผู้ส่ง</th>
               <th className="px-6 py-3 font-bold text-gray-600 pi:text-[16px] 2xl:text-[20px] whitespace-nowrap">วัน-เวลา</th>
@@ -101,7 +101,7 @@ export default function HistoryLogPage() {
               filteredLogs.map((log) => (
                 // ใช้ odd:bg-white even:bg-gray-50 (Zebra Striping) เพื่อให้อ่านง่าย
                 <tr key={log.id} className="odd:bg-white even:bg-slate-50 hover:bg-indigo-50 transition-colors">
-                  <td className="px-3 py-3 text-gray-500 pi:text-[16px] 2xl:text-[20px] font-mono whitespace-nowrap">
+                  <td className="pl-4 px-3 py-3 text-gray-500 pi:text-[16px] 2xl:text-[20px] font-mono whitespace-nowrap">
                     {log.id}
                   </td>
                   <td className="px-3 py-3 text-gray-900 pi:text-[16px] 2xl:text-[20px] font-semibold whitespace-nowrap">
