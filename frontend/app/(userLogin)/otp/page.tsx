@@ -45,7 +45,7 @@ export default function OtpPage() {
   };
   // --- Clean Styles Variables (แยกออกมาเพื่อความสะอาด) ---
   const otpBoxStyle = `
-    w-14 h-14 
+    w-14 h-14
     pi:w-16 pi:h-16 
     2xl:w-20 2xl:h-20
     text-center text-2xl font-bold text-[#1E293B]
@@ -66,11 +66,11 @@ export default function OtpPage() {
     <div className="min-h-screen relative flex items-center justify-center font-sans">
       {/* Background Split (ครึ่งขาว/ครึ่งน้ำเงิน) */}
       <div className="absolute inset-0 z-0">
-        <div className="h-1/2 w-full bg-white"></div>
+        <div className="h-1/2 w-full bg-off-white"></div>
         <div className="h-1/2 w-full bg-[#4F46E5]"></div>
       </div>
       {/* OTP Card (กล่องสีขาวตรงกลาง) */}
-      <div className="relative z-10 bg-white rounded-[30px] shadow-2xl p-10 flex flex-col items-center w-full max-w-md pi:max-w-lg">
+      <div className="relative z-10 bg-white rounded-[30px] shadow-2xl p-10 flex flex-col items-center w-full max-w-md pi:max-w-lg mb-15">
         <h2 className="text-[#1E293B] font-bold text-2xl pi:text-3xl mb-8">
           ยืนยันรหัส OTP
         </h2>
