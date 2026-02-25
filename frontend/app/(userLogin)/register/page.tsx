@@ -32,7 +32,7 @@ export default function Register() {
   const inputStyle = `
     text-Slate-gray mt-3 
     pi:text-[16px] 2xl:text-[24px] 
-    pi:p-2 2xl:px-4 pi:mb-2 2xl:mb-2 
+    pi:p-1 pi:px-3 2xl:px-4 pi:mb-2 2xl:mb-2 
     ring-1 ring-[#C3C5CB] 
     pi:rounded-[30px] 2xl:rounded-[50px] 
     outline-none focus:ring-2 focus:ring-[#4F46E5] 
@@ -41,7 +41,7 @@ export default function Register() {
   const primaryBtnStyle = `
     bg-[#4F46E5] mt-5 
     text-[#F9FAFB] font-semibold 
-    rounded-[30px] p-3 px-10 
+    rounded-[30px] px-12 py-3 
     hover:opacity-90 transition-all shadow-md
     pi:text-[16px] 2xl:text-[20px]
   `;
@@ -54,10 +54,10 @@ export default function Register() {
         <div className="h-1/2 w-full bg-[#4F46E5]"></div>
       </div>
       {/* Register Card */}
-      <div className="relative z-10 bg-white mb-10 rounded-[25px] shadow-2xl w-full max-w-sm 2xl:max-w-md 2xl:p-10 pi:p-6 flex flex-col items-center">
+      <div className="relative z-10 bg-white mb-10 rounded-[25px] shadow-2xl w-full max-w-sm 2xl:max-w-md 2xl:p-10 pi:p-3 pi:px-5 flex flex-col items-center">
         
-        <h1 className="text-Slate-gray font-semibold pi:text-[24px] 2xl:text-[32px] mb-2">
-          {step === 1 ? "สร้างบัญชีใหม่" : "ข้อมูลส่วนตัว"}
+        <h1 className="text-Slate-gray font-semibold pi:text-[20px] 2xl:text-[32px]">
+          สร้างบัญชีใหม่
         </h1>
         <div className="w-full flex flex-col mt-2">
           {step === 1 ? (
