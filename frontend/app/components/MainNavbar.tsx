@@ -5,7 +5,7 @@ import { Menu, User } from 'lucide-react'; // อย่าลืม npm install 
 
 export default function Navbar({ onMenuClick }: { onMenuClick?: () => void }) {
   return (
-    <nav className="h-full w-full flex items-center justify-between px-2 border-y-5 shadow-sm relative z-30">
+    <nav className="h-full w-full flex items-center justify-between px-2 2xl:py-3 pi:py-1 relative z-30 shadow-md">
       
       {/* ฝั่งซ้าย: ปุ่มเมนู + โลโก้ */}
       <div className="flex items-center gap-2">
@@ -15,8 +15,8 @@ export default function Navbar({ onMenuClick }: { onMenuClick?: () => void }) {
         >
           <Menu size={32} />
         </button>
-        <span className="pi:text-[24px] 2xl:text-[32px] font-bold text-indigo-600">
-          Secure Remote Sign
+        <span className="font-black pi:text-[24px] 2xl:text-[40px]  text-[#4F46E5] ">
+          Secure Remote Signature
         </span>
       </div>
 

@@ -9,7 +9,7 @@ export default function RootLayout({
 }>) {
   return (
    <div className="grid grid-cols-5 grid-rows-10 h-screen w-full overflow-hidden">
-        <div className="col-span-5 row-span-1 bg-off-white align-middle flex items-center border-b-[3px] border-">
+        <div className="col-span-5 row-span-1 bg-off-white align-middle flex items-center">
             <Navbar/>
         </div>
         <div className="col-span-5 row-span-9 row-start-2 bg-[#F9FAFB]"> 

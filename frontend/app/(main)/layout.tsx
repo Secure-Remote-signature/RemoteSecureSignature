@@ -16,7 +16,7 @@ export default function MainLayout({
     <div className="h-screen flex flex-col overflow-hidden bg-[#F9FAFB]">
       
       {/* ส่วนหัว (Header) */}
-      <header className="w-full bg-white border-b-[3px] shrink-0 relative z-30">
+      <header className="w-full bg-white relative z-30">
         <MainNavbar onMenuClick={() => setIsSidebarOpen(true)} />
       </header>
 

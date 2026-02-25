@@ -53,7 +53,9 @@ export default function Login() {
         </div>
         {/* ส่วนจัดการ Link (ลืมรหัสผ่าน / สมัครสมาชิก) */}
         <div className="w-full flex justify-end items-center px-1 mt-1">
-          <button className="text-sm text-gray-500 hover:text-red-500 hover:underline transition-colors">
+          <button
+             onClick={() => router.push('/forgotpass')}
+             className="text-sm text-gray-500 hover:text-red-500 hover:underline transition-colors">
             ลืมรหัสผ่าน?
           </button>
         </div>
