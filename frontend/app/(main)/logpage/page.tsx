@@ -6,13 +6,13 @@ import "@/app/styles/components.css";
 
 // Mock Data
 const mockLogs = [
-  { id: 'LOG-001', docName: 'เอกสารอนุมัติจบการศึกษา', sender: 'สมหญิง ใจดี', date: '25 ก.พ. 2026 14:30', status: 'success' },
-  { id: 'LOG-002', docName: 'ใบขอเบิกงบประมาณโครงการ', sender: 'ฝ่ายการเงิน', date: '25 ก.พ. 2026 10:15', status: 'success' },
-  { id: 'LOG-003', docName: 'หนังสือขออนุญาตใช้สถานที่', sender: 'สมชาย รักเรียน', date: '24 ก.พ. 2026 16:45', status: 'failed' },
-  { id: 'LOG-004', docName: 'สัญญาจ้างผู้รับเหมา CNC', sender: 'ฝ่ายจัดซื้อ', date: '24 ก.พ. 2026 09:00', status: 'processing' },
-  { id: 'LOG-005', docName: 'แบบฟอร์มขอลาพักร้อน', sender: 'มานะ อดทน', date: '23 ก.พ. 2026 11:20', status: 'success' },
-  { id: 'LOG-006', docName: 'บันทึกข้อความภายใน', sender: 'ธุรการ', date: '22 ก.พ. 2026 08:30', status: 'success' },
-  { id: 'LOG-007', docName: 'เอกสารลาป่วย', sender: 'วิชัย ใจสู้', date: '21 ก.พ. 2026 09:45', status: 'failed' },
+  { id: 'LOG-001', docName: 'เอกสารอนุมัติจบการศึกษา', sender: 'สมหญิง ใจดี', date: '25/02/26 14:30', status: 'success' },
+  { id: 'LOG-002', docName: 'ใบขอเบิกงบประมาณโครงการ', sender: 'ฝ่ายการเงิน', date: '25/02/26 10:15', status: 'success' },
+  { id: 'LOG-003', docName: 'หนังสือขออนุญาตใช้สถานที่', sender: 'สมชาย รักเรียน', date: '24/02/26 16:45', status: 'failed' },
+  { id: 'LOG-004', docName: 'สัญญาจ้างผู้รับเหมา CNC', sender: 'ฝ่ายจัดซื้อ', date: '24/02/26 09:00', status: 'processing' },
+  { id: 'LOG-005', docName: 'แบบฟอร์มขอลาพักร้อน', sender: 'มานะ อดทน', date: '23/02/26 11:20', status: 'success' },
+  { id: 'LOG-006', docName: 'บันทึกข้อความภายใน', sender: 'ธุรการ', date: '22/02/26 08:30', status: 'success' },
+  { id: 'LOG-007', docName: 'เอกสารลาป่วย', sender: 'วิชัย ใจสู้', date: '21/02/26 09:45', status: 'failed' },
 ];
 
 export default function HistoryLogPage() {
