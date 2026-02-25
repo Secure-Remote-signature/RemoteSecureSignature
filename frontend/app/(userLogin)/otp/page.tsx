@@ -38,7 +38,7 @@ export default function OtpPage() {
     const otpCode = otp.join('');
     if (otpCode.length === 4) {
       console.log("ยืนยัน OTP:", otpCode);
-      router.push('/dashboard'); // ยืนยันสำเร็จ -> ไปหน้า Dashboard
+      router.push('/login'); // ยืนยันสำเร็จ -> ไปหน้า Dashboard
     } else {
       alert("กรุณากรอกรหัส OTP ให้ครบ 4 หลัก");
     }
