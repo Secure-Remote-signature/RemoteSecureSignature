@@ -8,14 +8,15 @@ import { useRouter } from 'next/navigation';
 export default function Dashboard() {
     const router = useRouter();
     const [machineStatus, setMachineStatus] = useState<'idle' | 'working'>('idle');
-    const [incomingDoc, setIncomingDoc] = useState<{ sender: string, subject: string } | null>(null);
+    const [incomingDoc, setIncomingDoc] = useState<{ sender: string, subject: string, details: string } | null>(null);
     const handleSimulateIncoming = () => {
         setIncomingDoc({
             sender: "นางสาวสมหญิง ใจดี",
-            subject: "เอกสารอนุมัติจบการศึกษา"
+            subject: "เอกสารอนุมัติจบการศึกษา",
+            details: "เรียนอาจารย์สมชาย อาจหาญ ดิฉันนางสาวสมหญิง ใจดี นิสิตปี 4 รหัสนิสิต 6530300001 มีความประสงค์จะขออนุมัติจบการศึกษา จึงขอความอนุเคราะห์จากอาจารย์ในการลงนามอนุมัติเอกสารนี้ด้วยค่ะ"
         });
     };
-    return (
+    return (  
         <div className="bg-vibrant-indigo h-full w-full flex items-center justify-center relative">
             
             <div className={`bg-white shadow-2xl flex flex-col items-center justify-center text-center 
@@ -27,7 +28,6 @@ export default function Dashboard() {
                            `}>
                 
                 {machineStatus === 'idle' ? (
-                    // === สถานะ 1: ระบบพร้อมใช้งาน (ดีไซน์เดิมของคุณ) ===
                     <>
                         <div className="mb-4 text-green-500 animate-bounce">
                             <CheckCircle2 size={48} className="pi:w-10 pi:h-10 2xl:w-16 2xl:h-16" />
@@ -84,6 +84,12 @@ export default function Dashboard() {
                                     <span className="font-bold text-gray-900">เรื่อง: </span> 
                                     {incomingDoc.subject}
                                 </p>
+                                <div>
+                                    <span className="font-bold text-gray-900">รายละเอียด: </span>
+                                    <div className="whitespace-pre-line text-gray-700 mt-2 text-sm pi:text-base border p-3 rounded-lg bg-gray-50 max-h-40 overflow-y-auto custom-scrollbar">
+                                        {incomingDoc.details}
+                                    </div>
+                                </div>
                             </div>
 
                             {/* Link ดูเอกสาร */}
@@ -118,11 +124,11 @@ export default function Dashboard() {
                 Test Status: {machineStatus.toUpperCase()}
             </button>
             <button 
-                    onClick={handleSimulateIncoming}
-                    className="absolute bottom-15 right-5 bg-green-500/80 hover:bg-green-600 text-white px-3 py-1 rounded text-xs backdrop-blur-sm shadow-lg animate-pulse"
-                >
-                    Test Incoming Alert 🔔
-                </button>
+                onClick={handleSimulateIncoming}
+                className="absolute bottom-16 right-5 bg-green-500/80 hover:bg-green-600 text-white px-3 py-1 rounded text-xs backdrop-blur-sm shadow-lg animate-pulse"
+            >
+                Test Incoming Alert 🔔
+            </button>
 
         </div>
     );
