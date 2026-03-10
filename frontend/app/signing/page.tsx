@@ -91,7 +91,7 @@ function SigningContent() {
       </div>
 
       {/* --- Main Layout (Split Screen) --- */}
-      <div className="flex-1 flex flex-row overflow-hidden">
+      <div className="flex-1 flex flex-col pi:flex-row overflow-hidden">
         
         {/* LEFT: Document Preview (ฝั่งซ้าย: ดูเอกสาร) */}
         <div className="flex-1 bg-gray-200 overflow-y-auto p-4 pi:p-8 flex justify-center custom-scrollbar shadow-inner">
@@ -131,7 +131,7 @@ function SigningContent() {
         </div>
 
         {/* RIGHT: Signature Pad Panel (ฝั่งขวา: พื้นที่เซ็นชื่อ) */}
-        <div className="w-[40%] min-w-[350px] pi:min-w-[450px] max-w-[500px] bg-white border-l-2 border-gray-200 shadow-2xl flex flex-col z-10">
+        <div className="w-full h-[45vh] pi:h-auto pi:w-[40%] pi:min-w-[450px] pi:max-w-[500px] bg-white border-t-2 pi:border-t-0 pi:border-l-2 border-gray-200 shadow-2xl flex flex-col z-10">
           
           <div className="p-4 pi:p-6 bg-indigo-50 border-b border-indigo-100 flex flex-col items-center text-center">
              <h3 className="text-xl pi:text-3xl font-bold text-indigo-800 mb-1">พื้นที่ลงนาม</h3>
