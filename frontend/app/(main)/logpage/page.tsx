@@ -6,13 +6,13 @@ import "@/app/styles/components.css";
 
 // Mock Data
 const mockLogs = [
-  { id: 'LOG-001', docName: 'เอกสารอนุมัติจบการศึกษา', sender: 'สมหญิง ใจดี', date: '25/02/26 14:30', status: 'success' },
-  { id: 'LOG-002', docName: 'ใบขอเบิกงบประมาณโครงการ', sender: 'ฝ่ายการเงิน', date: '25/02/26 10:15', status: 'success' },
-  { id: 'LOG-003', docName: 'หนังสือขออนุญาตใช้สถานที่', sender: 'สมชาย รักเรียน', date: '24/02/26 16:45', status: 'failed' },
-  { id: 'LOG-004', docName: 'สัญญาจ้างผู้รับเหมา CNC', sender: 'ฝ่ายจัดซื้อ', date: '24/02/26 09:00', status: 'processing' },
-  { id: 'LOG-005', docName: 'แบบฟอร์มขอลาพักร้อน', sender: 'มานะ อดทน', date: '23/02/26 11:20', status: 'success' },
-  { id: 'LOG-006', docName: 'บันทึกข้อความภายใน', sender: 'ธุรการ', date: '22/02/26 08:30', status: 'success' },
-  { id: 'LOG-007', docName: 'เอกสารลาป่วย', sender: 'วิชัย ใจสู้', date: '21/02/26 09:45', status: 'failed' },
+  { id: 'srs-001', docName: 'เอกสารอนุมัติจบการศึกษา', sender: 'สมหญิง ใจดี', date: '25/02/26 14:30', status: 'success' },
+  { id: 'srs-002', docName: 'ใบขอเบิกงบประมาณโครงการ', sender: 'ฝ่ายการเงิน', date: '25/02/26 10:15', status: 'success' },
+  { id: 'srs-003', docName: 'หนังสือขออนุญาตใช้สถานที่', sender: 'สมชาย รักเรียน', date: '24/02/26 16:45', status: 'failed' },
+  { id: 'srs-004', docName: 'สัญญาจ้างผู้รับเหมา CNC', sender: 'ฝ่ายจัดซื้อ', date: '24/02/26 09:00', status: 'processing' },
+  { id: 'srs-005', docName: 'แบบฟอร์มขอลาพักร้อน', sender: 'มานะ อดทน', date: '23/02/26 11:20', status: 'success' },
+  { id: 'srs-006', docName: 'บันทึกข้อความภายใน', sender: 'ธุรการ', date: '22/02/26 08:30', status: 'success' },
+  { id: 'srs-007', docName: 'เอกสารลาป่วย', sender: 'วิชัย ใจสู้', date: '21/02/26 09:45', status: 'failed' },
 ];
 
 export default function HistoryLogPage() {
@@ -54,7 +54,7 @@ export default function HistoryLogPage() {
     <div className="w-full h-full flex flex-col bg-white">
       
       {/* --- ส่วนหัว (Header) แบบ Minimal --- */}
-      <div className="flex flex-row items-center justify-between p-2 border-b-2 border-gray-100 bg-white sticky top-0 z-20 shadow-sm">
+      <div className="flex flex-col gap-3 pi:flex-row items-start pi:items-center justify-between p-3 pi:p-2 border-b-2 border-gray-100 bg-white sticky top-0 z-20 shadow-sm">
         <div className="flex items-center gap-3">
             <div className="p-3 bg-indigo-100 rounded-xl text-indigo-700">
                 <FileText className="w-8 h-8 pi:w-5 pi:h-5 2xl:w-8 2xl:h-8" />
@@ -64,7 +64,7 @@ export default function HistoryLogPage() {
                 <p className="text-gray-500 text-sm">System Logs</p>
             </div>
         </div>
-        <div className="relative w-64 2xl:w-96 pi:w-64">
+        <div className="relative w-full pi:w-64 2xl:w-96">
           <div className="absolute inset-y-0 left-0 pl-3 flex items4 flex items-center pointer-events-none">
             <Search className="2xl:h-6 2xl:w-6 pi:h-4 pi:w-4 text-gray-400" />
           </div>

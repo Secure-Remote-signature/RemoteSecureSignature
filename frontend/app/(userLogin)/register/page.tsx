@@ -6,12 +6,12 @@ export default function Register() {
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
-    username: '',
+    // username: '',
     email: '',
     password: '',
     confirmPassword: '',
     firstName: '',
-    lastName: '',
+    lastName: '', 
     phone: ''
   });
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -62,13 +62,13 @@ export default function Register() {
         <div className="w-full flex flex-col mt-2">
           {step === 1 ? (
             <>
-              <input 
+              {/* <input 
                 name="username" 
                 placeholder="ชื่อผู้ใช้" 
                 className={inputStyle} 
                 value={formData.username}
                 onChange={handleChange}
-              />
+              /> */}
               <input 
                 name="email" 
                 type="email"
