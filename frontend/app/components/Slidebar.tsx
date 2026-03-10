@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, History, Settings, LogOut, X } from 'lucide-react';
+import { Home, History, Settings, LogOut, X, FilePen } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 interface SidebarProps {
@@ -18,7 +18,8 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const menuItems = [
     { name: 'หน้าแรก', href: '/dashboard', icon: Home },
     { name: 'ประวัติการลงนาม', href: '/logpage', icon: History }, // (สมมติ path ไว้ก่อน)
-    { name: 'การตั้งค่า', href: '/SettingPage', icon: Settings },    // (สมมติ path ไว้ก่อน)
+    { name: 'การตั้งค่า', href: '/SettingPage', icon: Settings },    // (สมมติ path ไว้ก่อน)'
+    { name: 'คำร้องขอ', href: '/requestpage', icon: FilePen },    // (สมมติ path ไว้ก่อน)'
   ];
 
   return (
