@@ -41,8 +41,8 @@ export default function Dashboard() {
             
             {/* --- หน้าจอหลัก Dashboard --- */}
             <div className={`bg-white shadow-2xl flex flex-col items-center justify-center text-center 
-                             aspect-video
-                             pi:w-[65%] pi:rounded-[20px]
+                             w-[90%] py-10 rounded-2xl aspect-auto
+                             pi:w-[65%] pi:py-0 pi:rounded-[20px] pi:aspect-video
                              2xl:w-[45%] 2xl:rounded-[40px]
                              transition-all duration-300
                              ${machineStatus === 'working' ? 'ring-4 ring-orange-300' : ''} 
@@ -51,27 +51,27 @@ export default function Dashboard() {
                 {machineStatus === 'idle' ? (
                     <>
                         <div className="mb-4 text-green-500 animate-bounce">
-                            <CheckCircle2 size={48} className="pi:w-10 pi:h-10 2xl:w-16 2xl:h-16" />
+                            <CheckCircle2 className="w-14 h-14 pi:w-10 pi:h-10 2xl:w-16 2xl:h-16" />
                         </div>
-                        <h1 className="text-Slate-gray pi:text-[24px] 2xl:text-[32px] font-bold">
+                        <h1 className="text-Slate-gray text-2xl pi:text-[24px] 2xl:text-[32px] font-bold">
                             ระบบพร้อมใช้งาน
                         </h1>
-                        <h1 className="text-Slate-gray pi:text-[20px] 2xl:text-[28px] font-medium mt-1">
+                        <h1 className="text-Slate-gray text-lg pi:text-[20px] 2xl:text-[28px] font-medium mt-1">
                             (System is ready to use)
                         </h1>
                     </>
                 ) : (
                     <>
                         <div className="mb-4 text-orange-500 animate-spin">
-                            <Loader2 size={48} className="pi:w-10 pi:h-10 2xl:w-16 2xl:h-16" />
+                            <Loader2 className="w-14 h-14 pi:w-10 pi:h-10 2xl:w-16 2xl:h-16" />
                         </div>
-                        <h1 className="text-orange-600 pi:text-[24px] 2xl:text-[32px] font-bold">
+                        <h1 className="text-orange-600 text-2xl pi:text-[24px] 2xl:text-[32px] font-bold">
                             ระบบกำลังทำงาน...
                         </h1>
-                        <h1 className="text-orange-600 pi:text-[20px] 2xl:text-[28px] font-medium mt-1">
+                        <h1 className="text-orange-600 text-lg pi:text-[20px] 2xl:text-[28px] font-medium mt-1">
                             (Machine is working)
                         </h1>
-                        <p className="text-gray-400 mt-2 pi:text-[14px] 2xl:text-[18px]">
+                        <p className="text-gray-400 mt-2 text-sm pi:text-[14px] 2xl:text-[18px]">
                             กรุณารอสักครู่...
                         </p>
                     </>
@@ -170,7 +170,7 @@ export default function Dashboard() {
             )}
 
             {/* --- ปุ่มทดสอบมุมขวาล่าง --- */}
-            <div className="absolute bottom-5 right-5 flex flex-col gap-2 z-40">
+            <div className="absolute bottom-5 right-5 flex flex-col gap-2 z-40 scale-90 origin-bottom-right pi:scale-100">
                 <button 
                     onClick={handleSimulateIncoming}
                     className="bg-green-500/90 hover:bg-green-600 text-white px-4 py-2 rounded-lg backdrop-blur-sm shadow-lg animate-pulse text-sm font-bold"
