@@ -23,14 +23,9 @@ export default function Navbar({ onMenuClick }: { onMenuClick?: () => void }) {
       {/* ฝั่งขวา: ชื่อผู้ใช้ + รูปโปรไฟล์ */}
       <div className="flex items-center gap-3">
         {/* ชื่อผู้ใช้ (ซ่อนในมือถือจอเล็กมากๆ ได้ถ้าต้องการ) */}
-        <span className="text-Slate-gray pi:text-[18px] 2xl:text-[24px] font-bold hidden sm:inline-block">
+        <span className="text-Slate-gray pi:text-[18px] 2xl:text-[24px] font-bold hidden sm:inline-block mx-5">
           ยินดีต้อนรับ, คุณสมชาย อาจหาญ
         </span>
-        
-        {/* ไอคอนโปรไฟล์ (วงกลมสีน้ำเงิน) */}
-        <div className="bg-indigo-600 rounded-full p-1.5">
-          <User size={24} className="text-white" />
-        </div>
       </div>
 
     </nav>
