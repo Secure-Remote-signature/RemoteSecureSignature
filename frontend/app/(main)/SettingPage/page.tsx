@@ -68,6 +68,14 @@ export default function SettingsPage() {
                 />
               </div>
               <div className="md:col-span-2">
+                <label className="block text-sm pi:text-lg font-medium text-gray-700 mb-1">เบอร์โทรศัพท์</label>
+                <input 
+                  type="text" 
+                  defaultValue="081-234-5678" 
+                  className="w-full p-3 pi:p-4 text-base pi:text-xl border border-gray-200 bg-gray-50 text-gray-500 roundw-full p-3 pi:p-4 text-base pi:text-xl border text-Slate-gray rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-alled-xl cursor-not-allowed" 
+                />
+              </div>
+              <div className="md:col-span-2">
                 <label className="block text-sm pi:text-lg font-medium text-gray-700 mb-1">อีเมล (ไม่สามารถแก้ไขได้)</label>
                 <input 
                   type="email" 
