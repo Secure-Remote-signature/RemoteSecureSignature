@@ -18,10 +18,12 @@ async function initializeDatabase() {
          userId INTEGER PRIMARY KEY AUTOINCREMENT,
          userName TEXT NOT NULL,
          userDate DATETIME NOT NULL,
-         useEmail TEXT UNIQUE NOT NULL,
+         userEmail TEXT UNIQUE NOT NULL,
          userPassword TEXT NOT NULL,
          userRole TEXT NOT NULL,
-         userPhone TEXT NOT NULL
+         userPhone TEXT NOT NULL,
+         userDepId INTEGER NOT NULL,
+         userDepName Text NOT NULL
        );
      `);
     await db.exec(`
