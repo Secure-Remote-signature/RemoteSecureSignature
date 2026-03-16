@@ -36,12 +36,16 @@ app.get("/srs", (req, res) => {
 });
 
 // Student API: Submit signing request (Migrated from master)
+// Student API: Submit signing request
 app.post('/api/request-sign', (req, res) => {
     const { docId, studentName, subject, signatureArea, documentImage } = req.body;
+
+    console.log(`📩 New request received: "${subject}" from ${studentName}`);
+    // ------------------------------------------------------------------
+
     const fileName = `${docId}.png`;
     const filePath = path.join(uploadDir, fileName);
     
-    // Process base64 image data
     const base64Data = documentImage.replace(/^data:image\/\w+;base64,/, "");
     
     fs.writeFile(filePath, base64Data, 'base64', (err) => {
