@@ -1,5 +1,7 @@
 import tkinter as tk
 from tkinter import messagebox, ttk
+
+import requests
 from alert import IncomingAlert
 
 class DashboardPage(tk.Frame):
@@ -7,6 +9,8 @@ class DashboardPage(tk.Frame):
         # Background color: #F9FAFB
         super().__init__(parent, bg="#F9FAFB")
         self.controller = controller
+        
+        self.last_notified_id = None  # To track the last notified request ID for polling
         
         # --- Top Navigation Bar ---
         top_bar = tk.Frame(self, bg="#FFFFFF", height=60, bd=0, highlightthickness=1, highlightbackground="#E5E7EB")
@@ -51,36 +55,61 @@ class DashboardPage(tk.Frame):
                   bg="#F9FAFB", fg="#4F46E5", bd=0, cursor="hand2",
                   command=lambda: controller.show_frame("HistoryPage")).pack(side="bottom", pady=30)
 
+        self.poll_for_requests()  # Start polling for new requests
+        
     def update_user_info(self):
-        """Update the welcome label with the actual username after login"""
+        self.last_notified_id = None
+        
         if hasattr(self.controller, 'current_user'):
             self.user_lbl.config(text=f"Welcome, {self.controller.current_user}")
   
     def poll_for_requests(self):
-        """แอบถาม Backend ทุกๆ 3 วินาที ว่ามีใครส่งงานมาใหม่ไหม"""
         prof_id = self.controller.current_user_id
-        api_url = f"http://localhost:5000/srs/request/latest/{prof_id}"
+        if not prof_id:
+            self.after(3000, self.poll_for_requests)
+            return
+        
+        if not data:
+            self.status_label.config(text="✅ ทุกอย่างเรียบร้อย! ไม่มีงานค้าง", fg="#10B981")
+        else:
+            self.status_label.config(text="🔔 มี 1 รายการใหม่รอการเซ็นชื่อ", fg="#F59E0B")
+
+        api_url = f"http://localhost:5000/srs/request/pending/{prof_id}"
 
         try:
             response = requests.get(api_url, timeout=2)
+            
             if response.status_code == 200:
                 data = response.json()
                 
-                # ตรวจสอบว่าเป็นงานใหม่จริงไหม (เทียบ ID ล่าสุดเพื่อไม่ให้เด้งซ้ำ)
-                if data and data['requestId'] != self.last_notified_id:
-                    self.last_notified_id = data['requestId']
-                    self.show_alert(data)
+                # ถ้ามีงาน (data ไม่เป็น None) และเป็นงานใหม่ (ID ไม่ซ้ำเดิม)
+                if data and data.get('requestId') != self.last_notified_id:
+                    self.last_notified_id = data.get('requestId')
+                    self.trigger_alert(data)
+                    
         except Exception as e:
             print(f"Polling error: {e}")
 
-        # วนลูปตัวเองใหม่ทุกๆ 3 วินาที
         self.after(3000, self.poll_for_requests)
 
-    def show_alert(self, data):
-        # เรียกใช้ Alert Class ที่เราแยกไฟล์ไว้
-        IncomingAlert(
+    def trigger_alert(self, data):
+        from alert import IncomingAlert # Import class ที่เราแยกไฟล์ไว้
+        
+        alert = IncomingAlert(
             self, 
             data=data, 
-            on_accept=lambda: self.controller.show_frame("ExecutionPage"),
+            on_accept=lambda: self.controller.show_frame("ExecutionPage", data=data),
             on_reject=self.handle_reject
         )
+    
+    def handle_reject(self):
+        req_id = self.last_notified_id
+        api_url = f"http://localhost:5000/srs/request/update-status/{req_id}"
+        
+        try:
+            requests.put(api_url, json={"status": "Rejected"})
+            messagebox.showinfo("สำเร็จ", "ปฏิเสธคำร้องเรียบร้อยแล้ว")
+        except:
+            pass
+    
+    
