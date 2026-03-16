@@ -37,7 +37,8 @@ async function initializeDatabase() {
          requestPicture TEXT NOT NULL,
          ownerRequestID INTEGER NOT NULL,
          clientRequestID INTEGER NOT NULL,
-         requestStatus TEXT DEFAULT 'Pending'
+         requestStatus TEXT DEFAULT 'Pending',
+         signatureCoordinates TEXT
        );
      `);
 
