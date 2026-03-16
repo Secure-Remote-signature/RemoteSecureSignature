@@ -1,48 +1,71 @@
 import tkinter as tk
 from tkinter import messagebox
+import requests
 
 class ChangePasswordPage(tk.Frame):
     def __init__(self, parent, controller):
-        # Background: #F9FAFB
         super().__init__(parent, bg="#F9FAFB")
         self.controller = controller
-        
-        # --- Top Navigation Bar ---
-        top_bar = tk.Frame(self, bg="#FFFFFF", height=60, bd=0, highlightthickness=1, highlightbackground="#E5E7EB")
-        top_bar.pack(side="top", fill="x")
-        
-        tk.Label(top_bar, text="Change Password", font=("Arial", 16, "bold"), 
-                 bg="#FFFFFF", fg="#1E293B").pack(side="left", padx=20, pady=15)
-        
-        tk.Button(top_bar, text="BACK", font=("Arial", 10, "bold"), 
-                  bg="#64748B", fg="#FFFFFF", relief="flat", padx=20,
-                  command=lambda: controller.show_frame("SettingPage")).pack(side="right", padx=20)
 
-        # --- Main Content (Card style) ---
+        # --- UI Header ---
         container = tk.Frame(self, bg="#FFFFFF", bd=0, highlightthickness=1, highlightbackground="#E5E7EB")
-        container.place(relx=0.5, rely=0.5, anchor="center", width=500, height=400)
+        container.place(relx=0.5, rely=0.5, anchor="center", width=400, height=450)
 
-        # Current Password
-        tk.Label(container, text="Current Password", font=("Arial", 11, "bold"), bg="#FFFFFF", fg="#475569").pack(anchor="w", padx=40, pady=(30, 0))
-        self.current_pass = tk.Entry(container, font=("Arial", 12), bg="#F1F5F9", relief="flat", bd=8, show="*")
-        self.current_pass.pack(fill="x", padx=40, pady=(5, 15))
+        tk.Label(container, text="Change Password", font=("Arial", 18, "bold"), 
+                 bg="#FFFFFF", fg="#1E293B").pack(pady=(30, 20))
 
-        # New Password
-        tk.Label(container, text="New Password", font=("Arial", 11, "bold"), bg="#FFFFFF", fg="#475569").pack(anchor="w", padx=40)
-        self.new_pass = tk.Entry(container, font=("Arial", 12), bg="#F1F5F9", relief="flat", bd=8, show="*")
-        self.new_pass.pack(fill="x", padx=40, pady=(5, 15))
+        # --- Input Fields ---
+        self.old_pass_entry = self.create_input(container, "Current Password")
+        self.new_pass_entry = self.create_input(container, "New Password")
+        self.confirm_pass_entry = self.create_input(container, "Confirm New Password")
 
-        # Confirm New Password
-        tk.Label(container, text="Confirm New Password", font=("Arial", 11, "bold"), bg="#FFFFFF", fg="#475569").pack(anchor="w", padx=40)
-        self.confirm_pass = tk.Entry(container, font=("Arial", 12), bg="#F1F5F9", relief="flat", bd=8, show="*")
-        self.confirm_pass.pack(fill="x", padx=40, pady=(5, 20))
+        # --- Buttons ---
+        tk.Button(container, text="UPDATE PASSWORD", font=("Arial", 12, "bold"), 
+                  bg="#4338CA", fg="#FFFFFF", relief="flat", command=self.handle_change).pack(pady=20, fill="x", padx=40, ipady=10)
 
-        # Save Button
-        tk.Button(container, text="SAVE NEW PASSWORD", font=("Arial", 12, "bold"), 
-                  bg="#4338CA", fg="#FFFFFF", relief="flat", activebackground="#3730A3",
-                  command=self.save_password).pack(fill="x", padx=40, ipady=8, pady=(10, 20))
+        tk.Button(container, text="CANCEL", font=("Arial", 10), 
+                  bg="#FFFFFF", fg="#64748B", relief="flat", 
+                  command=lambda: controller.show_frame("SettingPage")).pack()
 
-    def save_password(self):
-        # Validate logic goes here (Check if current password is correct, and if new passwords match)
-        # ...
-        pass
+    def create_input(self, parent, label_text):
+        tk.Label(parent, text=label_text, font=("Arial", 10), bg="#FFFFFF", fg="#64748B").pack(anchor="w", padx=40)
+        entry = tk.Entry(parent, font=("Arial", 12), bg="#F3F4F6", relief="flat", show="*")
+        entry.insert(0, "")
+        entry.pack(fill="x", padx=40, pady=(5, 15), ipady=8)
+        return entry
+
+    def handle_change(self):
+        old_p = self.old_pass_entry.get()
+        new_p = self.new_pass_entry.get()
+        confirm_p = self.confirm_pass_entry.get()
+
+        # 1. Validation Checks
+        if not old_p or not new_p or not confirm_p:
+            messagebox.showwarning("Warning", "กรุณากรอกข้อมูลให้ครบทุกช่อง")
+            return
+        
+        if new_p != confirm_p:
+            messagebox.showerror("Error", "รหัสผ่านใหม่ไม่ตรงกัน")
+            return
+
+        # 2. Backend API Call
+        user_id = self.controller.current_user_id
+        api_url = f"http://localhost:5000/srs/user/change-password/{user_id}"
+        payload = {
+            "oldPassword": old_p,
+            "newPassword": new_p
+        }
+
+        try:
+            response = requests.put(api_url, json=payload, timeout=5)
+            if response.status_code == 200:
+                messagebox.showinfo("Success", "เปลี่ยนรหัสผ่านเรียบร้อยแล้ว!")
+                self.controller.show_frame("SettingPage")
+                self.old_pass_entry.delete(0, tk.END)
+                self.new_pass_entry.delete(0, tk.END)
+                self.confirm_pass_entry.delete(0, tk.END)
+            else:
+                error_msg = response.json().get("error", "เกิดข้อผิดพลาด")
+                messagebox.showerror("Error", error_msg)
+        except Exception as e:
+            messagebox.showerror("Connection Error", f"ติดต่อ Server ไม่ได้: {e}")
