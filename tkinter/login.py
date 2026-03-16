@@ -18,8 +18,8 @@ class LoginPage(tk.Frame):
         tk.Label(center_frame, text="System Login", font=("Arial", 28, "bold"), 
                  bg="#FFFFFF", fg="#4F46E5").pack(pady=(40, 20))
         
-        # Username Input Section
-        tk.Label(center_frame, text="Username:", font=("Arial", 12, "bold"), 
+        # Email Input Section
+        tk.Label(center_frame, text="Email:", font=("Arial", 12, "bold"), 
                  bg="#FFFFFF", fg="#1E293B").pack(anchor="w", padx=40, pady=(10, 0))
         
         self.username_entry = tk.Entry(center_frame, font=("Arial", 14), bg="#F9FAFB", 
@@ -50,11 +50,14 @@ class LoginPage(tk.Frame):
                   
     def verify_login(self):
         """Check user credentials and navigate to the Dashboard"""
-        user = self.username_entry.get()
-        pwd = self.password_entry.get()
+        username = self.username_entry.get()
+        password = self.password_entry.get()
         
         api_url = "http://localhost:5000/api/user/login"
-        payload = {"username": user, "password": pwd}
+        payload = {
+            "userEmail": username, 
+            "userPassword": password
+        }
         
         try:
             # Sending POST request with English comments for clarity
