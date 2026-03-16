@@ -50,27 +50,42 @@ class LoginPage(tk.Frame):
                   
     def verify_login(self):
         """Check user credentials and navigate to the Dashboard"""
-        username = self.username_entry.get()
+        user_email = self.username_entry.get()
         password = self.password_entry.get()
         
-        api_url = "http://localhost:5000/api/user/login"
+        # 1. Use the correct URL matching your server.js setup
+        api_url = "http://localhost:5000/srs/user/login"
+        
+        # 2. Prepare payload with keys matching your Node.js controller
         payload = {
-            "userEmail": username, 
+            "userEmail": user_email, 
             "userPassword": password
         }
-        
+
         try:
-            # Sending POST request with English comments for clarity
+            # 3. Send POST request to Node.js backend
             response = requests.post(api_url, json=payload, timeout=5)
 
             if response.status_code == 200:
+                # Success: Parse JSON response
                 data = response.json()
-                self.controller.current_user = data.get("full_name")
                 
-                # Navigate to Dashboard on success
+                # Store user info in controller (using keys from your loginUser function)
+                self.controller.current_user = data.get("full_name") # From user.userName in DB
+                self.controller.user_role = data.get("role")
+                
+                # Clear inputs and move to Dashboard
+                self.username_entry.delete(0, tk.END)
+                self.password_entry.delete(0, tk.END)
                 self.controller.show_frame("DashboardPage")
+                
+            elif response.status_code == 401:
+                # Backend returned "Invalid email or password!"
+                messagebox.showerror("Login Failed", "Invalid Email or Password")
             else:
-                messagebox.showerror("Login Failed", "Invalid credentials from server.")
+                # Any other server error (404, 500)
+                messagebox.showerror("Error", f"Server responded with: {response.status_code}")
 
         except Exception as e:
-            messagebox.showerror("Connection Error", f"Cannot connect to Node.js server: {e}")
+            # Connection failed (e.g., server is not running)
+            messagebox.showerror("Connection Error", f"Cannot reach backend: {e}")
