@@ -1,5 +1,11 @@
 import { open } from "sqlite";
-import sqlite3Verbose from "sqlite3";
+import sqlite3 from "sqlite3";
+import nodemailer from "nodemailer";
+import 'dotenv/config';
+
+const sqlite3Verbose = sqlite3.verbose();
+
+let otpStore = {}; 
 
 const createUser = async (req, res) => {
   try {
@@ -141,12 +147,14 @@ const updateUser = async (req, res) => {
     });
 
     const result = await db.run(
-      `
-      UPDATE users
-      SET userName = ?, userLastname = ?, userPhone = ?, userPassword = ?
-      WHERE userId = ?
-      `,
-
+        `
+        UPDATE users
+        SET userName = COALESCE(?, userName), 
+            userLastname = COALESCE(?, userLastname), 
+            userPhone = COALESCE(?, userPhone), 
+            userPassword = COALESCE(?, userPassword)
+        WHERE userId = ?
+        `,
       [
         userName,
         userLastname,
@@ -237,6 +245,90 @@ const changePassword = async (req, res) => {
   }
 };
 
+const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+    }
+});
+
+const requestOTP = async (req, res) => {
+    try {
+        const { email } = req.body;
+        if (!email) return res.status(400).json({ error: "Email is required!" });
+
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        otpStore[email] = {
+            otp: otp,
+            expires: Date.now() + 300000 
+        };
+
+        await transporter.sendMail({
+            from: `"SRS System" <${process.env.EMAIL_USER}>`,
+            to: email,
+            subject: 'Your OTP for Password Reset',
+            text: `Your OTP is: ${otp}. It will expire in 5 minutes.`
+        });
+        res.status(200).json({ message: 'OTP sent successfully' });
+    } catch (error) {
+        console.error("OTP Request Error:", error);
+        res.status(500).json({ message: 'Failed to send email' });
+    }
+};
+
+const verifyOTP = async (req, res) => {
+    console.log("--- Debug OTP Verification ---");
+    console.log("Body ที่ได้รับ:", req.body); 
+    
+    const { email, otp, newPassword } = req.body;
+
+    try {
+        const storedData = otpStore[email];
+
+        if (!storedData) {
+            console.log("❌ ไม่พบการขอ OTP สำหรับอีเมลนี้");
+            return res.status(400).json({ error: "Invalid OTP or OTP expired." });
+        }
+        if (Date.now() > storedData.expires) {
+            delete otpStore[email]; // ลบทิ้งถ้าหมดอายุ
+            console.log("❌ OTP หมดอายุแล้ว");
+            return res.status(400).json({ error: "OTP expired." });
+        }
+        if (String(storedData.otp) !== String(otp)) {
+            console.log("❌ รหัส OTP ไม่ตรงกัน! ในระบบ:", storedData.otp, "ที่ส่งมา:", otp);
+            return res.status(400).json({ error: "Invalid OTP." });
+        }
+
+        console.log("✅ OTP ถูกต้อง! กำลังอัปเดตรหัสผ่านใหม่ใน Database...");
+        const db = await open({
+            filename: "./database/remote.db",
+            driver: sqlite3Verbose.Database,
+        });
+
+        const result = await db.run(
+            "UPDATE users SET userPassword = ? WHERE userEmail = ?",
+            [newPassword, email]
+        );
+
+        await db.close();
+
+        if (result.changes === 0) {
+            console.log("❌ ไม่พบ User นี้ในฐานข้อมูลจริง (UPDATE ไม่สำเร็จ)");
+            return res.status(404).json({ error: "User not found in database." });
+        }
+        delete otpStore[email];
+
+        console.log("🎉 อัปเดตรหัสผ่านสำเร็จ!");
+        res.status(200).json({ message: "Update password successfully" });
+
+    } catch (error) {
+        console.error("🔥 Error ใน verifyOTP:", error);
+        res.status(500).json({ error: "Internal server error" });
+    }
+};
+
+
 export default {
   createUser,
   loginUser,
@@ -244,4 +336,6 @@ export default {
   updateUser,
   getUserProfile,
   changePassword,
+  requestOTP,
+  verifyOTP,
 };
