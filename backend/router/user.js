@@ -10,5 +10,7 @@ user.delete("/deluser/:id", userController.deluser);
 user.put('/updateuser/:id', userController.updateUser);
 user.get('/profile/:id', userController.getUserProfile);
 user.put('/change-password/:id', userController.changePassword);
+user.post('/request-otp', userController.requestOTP);
+user.post('/verify-otp', userController.verifyOTP);
 
 export default user;
