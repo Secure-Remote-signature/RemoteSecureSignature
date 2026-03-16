@@ -71,7 +71,8 @@ class LoginPage(tk.Frame):
                 data = response.json()
                 
                 # Store user info in controller (using keys from your loginUser function)
-                self.controller.current_user = data.get("full_name") # From user.userName in DB
+                self.controller.current_user_id = data.get("userId") 
+                self.controller.current_user = data.get("full_name")
                 self.controller.user_role = data.get("role")
                 
                 # Clear inputs and move to Dashboard
