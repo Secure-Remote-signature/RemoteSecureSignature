@@ -40,30 +40,30 @@ class SettingPage(tk.Frame):
         right_col.pack(side="left", fill="both", expand=True, padx=20)
 
         # --- LEFT COLUMN (Editable Fields) ---
-        self.create_label(left_col, "First Name:")
+        self.create_label(left_col, "ชื่อ:")
         self.first_name_entry = self.create_entry(left_col, "Professor")
         
-        self.create_label(left_col, "Last Name:")
+        self.create_label(left_col, "นามสกุล:")
         self.last_name_entry = self.create_entry(left_col, "Signature")
         
-        self.create_label(left_col, "Phone Number:")
+        self.create_label(left_col, "หมายเลขโทรศัพท์:")
         self.phone_entry = self.create_entry(left_col, "081-234-5678")
         
         # --- Replaced Password Entry with a Button ---
-        self.create_label(left_col, "Security:")
-        tk.Button(left_col, text="CHANGE PASSWORD", font=("Arial", 10, "bold"), 
+        self.create_label(left_col, "ความปลอดภัย:")
+        tk.Button(left_col, text="เปลี่ยนรหัสผ่าน", font=("Arial", 10, "bold"), 
                   bg="#F59E0B", fg="#FFFFFF", relief="flat", activebackground="#D97706",
                   command=lambda: controller.show_frame("ChangePasswordPage")).pack(anchor="w", pady=(5, 0), ipady=5, ipadx=10)
 
         # --- RIGHT COLUMN (Read-only Fields) ---
-        self.create_label(right_col, "Position (Read-only):", is_admin_only=True)
-        self.create_readonly_text(right_col, "Dean of Engineering")
+        self.create_label(right_col, "ตำแหน่ง (ไม่สามารถแก้ไขได้):", is_admin_only=True)
+        self.position_entry = self.create_readonly_text(right_col, "Loading...")
         
-        self.create_label(right_col, "Faculty (Read-only):", is_admin_only=True)
-        self.create_readonly_text(right_col, "Engineering & Technology")
+        self.create_label(right_col, "คณะ (ไม่สามารถแก้ไขได้):", is_admin_only=True)
+        self.faculty_entry = self.create_readonly_text(right_col, "Loading...")
         
-        self.create_label(right_col, "Email (Read-only):", is_admin_only=True)
-        self.create_readonly_text(right_col, "prof.signature@university.ac.th")
+        self.create_label(right_col, "อีเมล (ไม่สามารถแก้ไขได้):", is_admin_only=True)
+        self.email_entry = self.create_readonly_text(right_col, "Loading...")
 
         # --- Button inside the FOOTER frame ---
         tk.Button(footer, text="SAVE CHANGES", font=("Arial", 14, "bold"), 
@@ -94,6 +94,11 @@ class SettingPage(tk.Frame):
                 # 3. (Phone)
                 self.phone_entry.delete(0, tk.END)
                 self.phone_entry.insert(0, phone)
+                
+                # Read-only fields
+                self.set_entry_text(self.position_entry, data.get('userRole'))
+                self.set_entry_text(self.faculty_entry, data.get('userDepname'))
+                self.set_entry_text(self.email_entry, data.get('userEmail'))
                 
                 print("Data loaded successfully!")
             else:
@@ -155,4 +160,13 @@ class SettingPage(tk.Frame):
                     messagebox.showerror("ผิดพลาด", "ไม่สามารถลบบัญชีได้")
             except Exception as e:
                 messagebox.showerror("Error", f"เชื่อมต่อเซิร์ฟเวอร์ไม่ได้: {e}")
+                
+    def set_entry_text(self, entry, text):
+        """Helper: ปลดล็อกชั่วคราวเพื่อเขียนค่าใหม่จาก Database"""
+        if entry is None: return
+        
+        entry.config(state="normal") # 1. ปลดล็อก
+        entry.delete(0, tk.END)      # 2. ล้างค่า
+        entry.insert(0, str(text) if text else "") # 3. ใส่ค่าใหม่
+        entry.config(state="readonly") # 4. ล็อกกลับเป็น Read-only
                 
