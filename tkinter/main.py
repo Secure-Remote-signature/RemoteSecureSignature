@@ -65,16 +65,19 @@ class MainApp(tk.Tk):
             self.user_role = None
             self.show_frame("LoginPage")
 
-    def show_frame(self, page_name):
+    def show_frame(self, page_name, data=None):
         """Switch to a page by its class name string"""
         if page_name in self.frames:
             frame = self.frames[page_name]
+            
+            if data is not None and hasattr(frame, "set_request_data"):
+                frame.set_request_data(data)
             
             # Special logic: Update user info before showing Dashboard
             if page_name == "DashboardPage" and hasattr(frame, "update_user_info"):
                 frame.update_user_info()
                 
-            if page_name == "SettingPage":
+            if page_name == "SettingPage" and hasattr(frame, "load_user_data"):
                 frame.load_user_data()  # Load user data when opening settings
                 
             frame.tkraise()
