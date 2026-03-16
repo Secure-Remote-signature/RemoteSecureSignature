@@ -15,16 +15,17 @@ async function initializeDatabase() {
 
     await db.exec(`
        CREATE TABLE IF NOT EXISTS users (
-         userId INTEGER PRIMARY KEY AUTOINCREMENT,
-         userName TEXT NOT NULL,
-         userDate DATETIME NOT NULL,
-         userEmail TEXT UNIQUE NOT NULL,
-         userPassword TEXT NOT NULL,
-         userRole TEXT NOT NULL,
-         userPhone TEXT NOT NULL,
-         userDepId INTEGER NOT NULL,
-         userDepName Text NOT NULL
-       );
+        userId INTEGER PRIMARY KEY AUTOINCREMENT,
+        userName TEXT,
+        userLastname TEXT,
+        userDate TEXT,
+        userEmail email UNIQUE,
+        userPassword TEXT,
+        userRole TEXT,
+        userPhone TEXT,
+        userDepId TEXT,
+        userDepname TEXT
+      );
      `);
     await db.exec(`
        CREATE TABLE IF NOT EXISTS requestSign (
