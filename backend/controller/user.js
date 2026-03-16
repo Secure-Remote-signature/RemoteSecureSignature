@@ -182,7 +182,7 @@ const getUserProfile = async (req, res) => {
       driver: sqlite3Verbose.Database });
     
     const user = await db.get(
-      "SELECT userName, userLastname, userEmail, userPhone, userDepname FROM users WHERE userId = ?", [id]);
+      "SELECT * FROM users WHERE userId = ?", [id]);
     await db.close();
 
     if (user) {
