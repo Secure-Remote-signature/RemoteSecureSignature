@@ -14,7 +14,7 @@ from change_password import ChangePasswordPage
 class MainApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        
+        self.shared_data = {}  # Dictionary to hold any data that needs to be shared across pages
         self.current_user_id = None
         self.current_user = None
         self.user_role = None
@@ -69,6 +69,9 @@ class MainApp(tk.Tk):
         """Switch to a page by its class name string"""
         if page_name in self.frames:
             frame = self.frames[page_name]
+            
+            if hasattr(frame, "clear_fields"):
+                frame.clear_fields()
             
             if data is not None and hasattr(frame, "set_request_data"):
                 frame.set_request_data(data)
