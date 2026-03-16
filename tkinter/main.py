@@ -1,4 +1,5 @@
 import tkinter as tk
+from tkinter import messagebox
 from login import LoginPage
 from dashboard import DashboardPage
 from signature import SignaturePage
@@ -56,6 +57,13 @@ class MainApp(tk.Tk):
 
         # Start the app at the Login Page
         self.show_frame("LoginPage") # Change to "LoginPage" after testing signature page
+
+    def logout(self):
+        if messagebox.askyesno("Logout", "คุณต้องการออกจากระบบใช่หรือไม่?"):
+            self.current_user_id = None
+            self.current_user = None
+            self.user_role = None
+            self.show_frame("LoginPage")
 
     def show_frame(self, page_name):
         """Switch to a page by its class name string"""
