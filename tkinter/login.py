@@ -1,6 +1,8 @@
 import tkinter as tk
 from tkinter import messagebox
 
+import requests
+
 class LoginPage(tk.Frame):
     def __init__(self, parent, controller):
         # Initialize the frame with a light gray background
@@ -16,8 +18,8 @@ class LoginPage(tk.Frame):
         tk.Label(center_frame, text="System Login", font=("Arial", 28, "bold"), 
                  bg="#FFFFFF", fg="#4F46E5").pack(pady=(40, 20))
         
-        # Username Input Section
-        tk.Label(center_frame, text="Username:", font=("Arial", 12, "bold"), 
+        # Email Input Section
+        tk.Label(center_frame, text="อีเมล:", font=("Arial", 12, "bold"), 
                  bg="#FFFFFF", fg="#1E293B").pack(anchor="w", padx=40, pady=(10, 0))
         
         self.username_entry = tk.Entry(center_frame, font=("Arial", 14), bg="#F9FAFB", 
@@ -25,7 +27,7 @@ class LoginPage(tk.Frame):
         self.username_entry.pack(padx=40, pady=5, ipady=8, fill="x") 
         
         # Password Input Section
-        tk.Label(center_frame, text="Password:", font=("Arial", 12, "bold"), 
+        tk.Label(center_frame, text="รหัสผ่าน:", font=("Arial", 12, "bold"), 
                  bg="#FFFFFF", fg="#1E293B").pack(anchor="w", padx=40, pady=(10, 0))
         
         self.password_entry = tk.Entry(center_frame, font=("Arial", 14), bg="#F9FAFB", 
@@ -34,7 +36,7 @@ class LoginPage(tk.Frame):
 
         # --- FORGOT PASSWORD LINK ---
         # Align this text button to the right side of the card
-        tk.Button(center_frame, text="Forgot Password?", font=("Arial", 10, "underline"), 
+        tk.Button(center_frame, text="ลืมรหัสผ่าน?", font=("Arial", 10, "underline"), 
                   bg="#FFFFFF", fg="#4F46E5", activeforeground="#3730A3", 
                   relief="flat", bd=0, cursor="hand2",
                   command=lambda: self.controller.show_frame("ForgotPasswordPage")).pack(anchor="e", padx=40, pady=(5, 20))
@@ -48,20 +50,43 @@ class LoginPage(tk.Frame):
                   
     def verify_login(self):
         """Check user credentials and navigate to the Dashboard"""
-        user = self.username_entry.get()
-        pwd = self.password_entry.get()
+        user_email = self.username_entry.get()
+        password = self.password_entry.get()
         
-        # Mock validation logic (Admin/Admin)
-        if user == "admin" and pwd == "admin":
-            # Clear fields for next session
-            self.username_entry.delete(0, tk.END)
-            self.password_entry.delete(0, tk.END)
-            
-            # Store the current user in the main controller state
-            self.controller.current_user = user
-            
-            # Switch to the Dashboard
-            self.controller.show_frame("DashboardPage")
-        else:
-            # Show error if login fails
-            messagebox.showerror("Login Failed", "Invalid Username or Password")
+        # 1. Use the correct URL matching your server.js setup
+        api_url = "http://localhost:5000/srs/user/login"
+        
+        # 2. Prepare payload with keys matching your Node.js controller
+        payload = {
+            "userEmail": user_email, 
+            "userPassword": password
+        }
+
+        try:
+            # 3. Send POST request to Node.js backend
+            response = requests.post(api_url, json=payload, timeout=5)
+
+            if response.status_code == 200:
+                # Success: Parse JSON response
+                data = response.json()
+                
+                # Store user info in controller (using keys from your loginUser function)
+                self.controller.current_user_id = data.get("userId") 
+                self.controller.current_user = data.get("full_name")
+                self.controller.user_role = data.get("role")
+                
+                # Clear inputs and move to Dashboard
+                self.username_entry.delete(0, tk.END)
+                self.password_entry.delete(0, tk.END)
+                self.controller.show_frame("DashboardPage")
+                
+            elif response.status_code == 401:
+                # Backend returned "Invalid email or password!"
+                messagebox.showerror("Login Failed", "Invalid Email or Password")
+            else:
+                # Any other server error (404, 500)
+                messagebox.showerror("Error", f"Server responded with: {response.status_code}")
+
+        except Exception as e:
+            # Connection failed (e.g., server is not running)
+            messagebox.showerror("Connection Error", f"Cannot reach backend: {e}")

@@ -1,5 +1,7 @@
+import http
 import tkinter as tk
 from tkinter import messagebox
+import requests
 
 class ForgotPasswordPage(tk.Frame):
     def __init__(self, parent, controller):
@@ -38,11 +40,26 @@ class ForgotPasswordPage(tk.Frame):
                   command=lambda: self.controller.show_frame("LoginPage")).pack()
 
     def handle_send_code(self):
-        # Get the email from entry
         email = self.email_entry.get()
-        
-        # You can write your logic here to verify email and send OTP
-        # ...
-        
-        # After sending successfully, move to Reset Password page
-        self.controller.show_frame("ResetPasswordPage")
+        backend_url = "http://localhost:5000/srs/user/request-otp" # เช็ค IP/Port ให้ดี
+        response = None 
+
+        try:
+            response = requests.post(backend_url, json={"email": email}, timeout=5)
+            
+            if response.status_code == 200:
+                email_user = self.email_entry.get()
+                messagebox.showinfo("Success", "OTP has been sent to your email.")
+                self.controller.shared_data = {"email": email} 
+                self.controller.show_frame("ResetPasswordPage", data=email_user)
+            else:
+                messagebox.showerror("Error", f"Server error: {response.status_code}")
+                
+        except Exception as e:
+            print(f"DEBUG: Connection failed -> {e}")
+            messagebox.showerror("Connection Error", "เชื่อมต่อ Server ไม่ได้ (เช็คว่ารัน Backend หรือยัง?)")
+            
+    def clear_fields(self):
+        if hasattr(self, 'email_entry'):
+            self.email_entry.delete(0, tk.END)
+            print("ล้างช่องกรอกอีเมลในหน้า Forgot Password เรียบร้อย")

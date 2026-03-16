@@ -1,4 +1,5 @@
 import tkinter as tk
+from tkinter import messagebox
 from login import LoginPage
 from dashboard import DashboardPage
 from signature import SignaturePage
@@ -6,8 +7,6 @@ from setting import SettingPage
 from history import HistoryPage
 from pin_confirm import PinConfirmPage
 from execution import ExecutionPage
-
-# --- 1. Import the 3 new password management pages ---
 from forgot_password import ForgotPasswordPage
 from reset_password import ResetPasswordPage
 from change_password import ChangePasswordPage
@@ -15,6 +14,10 @@ from change_password import ChangePasswordPage
 class MainApp(tk.Tk):
     def __init__(self):
         super().__init__()
+        self.shared_data = {}  # Dictionary to hold any data that needs to be shared across pages
+        self.current_user_id = None
+        self.current_user = None
+        self.user_role = None
         
         # --- Window Setup ---
         self.title("Secure Remote Signature")
@@ -38,9 +41,9 @@ class MainApp(tk.Tk):
             HistoryPage, 
             PinConfirmPage,
             ExecutionPage,
-            ForgotPasswordPage,  # Added
-            ResetPasswordPage,   # Added
-            ChangePasswordPage   # Added
+            ForgotPasswordPage,
+            ResetPasswordPage,
+            ChangePasswordPage
         )
 
         for PageClass in page_list:
@@ -55,14 +58,30 @@ class MainApp(tk.Tk):
         # Start the app at the Login Page
         self.show_frame("LoginPage") # Change to "LoginPage" after testing signature page
 
-    def show_frame(self, page_name):
+    def logout(self):
+        if messagebox.askyesno("Logout", "คุณต้องการออกจากระบบใช่หรือไม่?"):
+            self.current_user_id = None
+            self.current_user = None
+            self.user_role = None
+            self.show_frame("LoginPage")
+
+    def show_frame(self, page_name, data=None):
         """Switch to a page by its class name string"""
         if page_name in self.frames:
             frame = self.frames[page_name]
             
+            if hasattr(frame, "clear_fields"):
+                frame.clear_fields()
+            
+            if data is not None and hasattr(frame, "set_request_data"):
+                frame.set_request_data(data)
+            
             # Special logic: Update user info before showing Dashboard
             if page_name == "DashboardPage" and hasattr(frame, "update_user_info"):
                 frame.update_user_info()
+                
+            if page_name == "SettingPage" and hasattr(frame, "load_user_data"):
+                frame.load_user_data()  # Load user data when opening settings
                 
             frame.tkraise()
         else:

@@ -15,16 +15,17 @@ async function initializeDatabase() {
 
     await db.exec(`
        CREATE TABLE IF NOT EXISTS users (
-         userId INTEGER PRIMARY KEY AUTOINCREMENT,
-         userName TEXT NOT NULL,
-         userDate DATETIME NOT NULL,
-         userEmail TEXT UNIQUE NOT NULL,
-         userPassword TEXT NOT NULL,
-         userRole TEXT NOT NULL,
-         userPhone TEXT NOT NULL,
-         userDepId INTEGER NOT NULL,
-         userDepName Text NOT NULL
-       );
+        userId INTEGER PRIMARY KEY AUTOINCREMENT,
+        userName TEXT,
+        userLastname TEXT,
+        userDate TEXT,
+        userEmail email UNIQUE,
+        userPassword TEXT,
+        userRole TEXT,
+        userPhone TEXT,
+        userDepId TEXT,
+        userDepname TEXT
+      );
      `);
     await db.exec(`
        CREATE TABLE IF NOT EXISTS requestSign (
@@ -35,8 +36,9 @@ async function initializeDatabase() {
          requestRTSP TEXT NOT NULL,
          requestPicture TEXT NOT NULL,
          ownerRequestID INTEGER NOT NULL,
-         clientRequestID INTEGER NOT NULL
-         
+         clientRequestID INTEGER NOT NULL,
+         requestStatus TEXT DEFAULT 'Pending',
+         signatureCoordinates TEXT
        );
      `);
 

@@ -1,11 +1,11 @@
 import tkinter as tk
 from tkinter import messagebox
-
+import requests
 class ResetPasswordPage(tk.Frame):
     def __init__(self, parent, controller):
-        # Set background color to light gray
         super().__init__(parent, bg="#F9FAFB")
         self.controller = controller
+        self.email_address = None
         self.setup_ui()
 
     def setup_ui(self):
@@ -47,14 +47,34 @@ class ResetPasswordPage(tk.Frame):
                   command=lambda: self.controller.show_frame("LoginPage")).pack()
 
     def handle_reset_password(self):
-        # Get values from entries
-        otp_code = self.code_entry.get()
+        otp = self.code_entry.get()
         new_pass = self.new_pass_entry.get()
-        confirm_pass = self.confirm_pass_entry.get()
-        
-        # You can write your logic here to validate OTP and check if passwords match
-        # ...
+        confirm_pin = self.confirm_pass_entry.get()
 
-        # Example of successful reset redirect (You will implement the condition)
-        # messagebox.showinfo("Success", "Password updated successfully!")
-        # self.controller.show_frame("LoginPage")
+        if new_pass != confirm_pin:
+            messagebox.showwarning("Warning", "PINs do not match!")
+            return
+
+        backend_url = "http://192.168.1.39:5000/api/verify-otp"
+
+        try:
+            payload = {
+                "email": self.email_address, # ต้องมีค่านี้ส่งไปด้วย!
+                "otp": self.code_entry.get(),
+                "newPassword": self.new_pass_entry.get()
+            }
+            response = requests.post("http://localhost:5000/srs/user/verify-otp", json=payload)
+            if response.status_code == 200:
+                messagebox.showinfo("Success", "Your PIN has been reset.")
+                self.controller.show_frame("LoginPage")
+            else:
+                messagebox.showerror("Error", "Invalid OTP or OTP expired.")
+        except Exception as e:
+            messagebox.showerror("Connection Error", str(e))
+    
+    def set_request_data(self, data):
+        self.email_address = data
+        self.code_entry.delete(0, tk.END)
+        self.new_pass_entry.delete(0, tk.END)
+        self.confirm_pass_entry.delete(0, tk.END)
+        print(f"ได้รับอีเมลเข้าระบบรีเซ็ตแล้ว: {self.email_address}")

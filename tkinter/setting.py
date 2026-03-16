@@ -1,6 +1,8 @@
 import tkinter as tk
 from tkinter import messagebox
 
+import requests
+
 class SettingPage(tk.Frame):
     def __init__(self, parent, controller):
         # Background: #F9FAFB
@@ -38,54 +40,133 @@ class SettingPage(tk.Frame):
         right_col.pack(side="left", fill="both", expand=True, padx=20)
 
         # --- LEFT COLUMN (Editable Fields) ---
-        self.create_label(left_col, "First Name:")
+        self.create_label(left_col, "ชื่อ:")
         self.first_name_entry = self.create_entry(left_col, "Professor")
         
-        self.create_label(left_col, "Last Name:")
+        self.create_label(left_col, "นามสกุล:")
         self.last_name_entry = self.create_entry(left_col, "Signature")
         
-        self.create_label(left_col, "Phone Number:")
+        self.create_label(left_col, "หมายเลขโทรศัพท์:")
         self.phone_entry = self.create_entry(left_col, "081-234-5678")
         
         # --- Replaced Password Entry with a Button ---
-        self.create_label(left_col, "Security:")
-        tk.Button(left_col, text="CHANGE PASSWORD", font=("Arial", 10, "bold"), 
+        self.create_label(left_col, "ความปลอดภัย:")
+        tk.Button(left_col, text="เปลี่ยนรหัสผ่าน", font=("Arial", 10, "bold"), 
                   bg="#F59E0B", fg="#FFFFFF", relief="flat", activebackground="#D97706",
                   command=lambda: controller.show_frame("ChangePasswordPage")).pack(anchor="w", pady=(5, 0), ipady=5, ipadx=10)
 
         # --- RIGHT COLUMN (Read-only Fields) ---
-        self.create_label(right_col, "Position (Read-only):", is_admin_only=True)
-        self.create_readonly_text(right_col, "Dean of Engineering")
+        self.create_label(right_col, "ตำแหน่ง (ไม่สามารถแก้ไขได้):", is_admin_only=True)
+        self.position_entry = self.create_readonly_text(right_col, "Loading...")
         
-        self.create_label(right_col, "Faculty (Read-only):", is_admin_only=True)
-        self.create_readonly_text(right_col, "Engineering & Technology")
+        self.create_label(right_col, "คณะ (ไม่สามารถแก้ไขได้):", is_admin_only=True)
+        self.faculty_entry = self.create_readonly_text(right_col, "Loading...")
         
-        self.create_label(right_col, "Email (Read-only):", is_admin_only=True)
-        self.create_readonly_text(right_col, "prof.signature@university.ac.th")
+        self.create_label(right_col, "อีเมล (ไม่สามารถแก้ไขได้):", is_admin_only=True)
+        self.email_entry = self.create_readonly_text(right_col, "Loading...")
 
         # --- Button inside the FOOTER frame ---
         tk.Button(footer, text="SAVE CHANGES", font=("Arial", 14, "bold"), 
                   bg="#4338CA", fg="#FFFFFF", relief="flat", activebackground="#4F46E5",
                   command=self.save_settings).pack(ipady=10, padx=40, fill="x")
 
+    def load_user_data(self):
+        user_id = self.controller.current_user_id 
+        api_url = f"http://localhost:5000/srs/user/profile/{user_id}"
+
+        try:
+            response = requests.get(api_url, timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+
+                first_name = str(data.get("userName")) if data.get("userName") else ""
+                last_name = str(data.get("userLastname")) if data.get("userLastname") else ""
+                phone = str(data.get("userPhone")) if data.get("userPhone") else ""
+
+                # 1. (First Name)
+                self.first_name_entry.delete(0, tk.END)
+                self.first_name_entry.insert(0, first_name)
+
+                # 2. (Last Name)
+                self.last_name_entry.delete(0, tk.END)
+                self.last_name_entry.insert(0, last_name)
+
+                # 3. (Phone)
+                self.phone_entry.delete(0, tk.END)
+                self.phone_entry.insert(0, phone)
+                
+                # Read-only fields
+                self.set_entry_text(self.position_entry, data.get('userRole'))
+                self.set_entry_text(self.faculty_entry, data.get('userDepname'))
+                self.set_entry_text(self.email_entry, data.get('userEmail'))
+                
+                print("Data loaded successfully!")
+            else:
+                print(f"Backend Error: {response.status_code}")
+        except Exception as e:
+            import traceback
+            traceback.print_exc() 
+            print(f"Logic Error: {e}")
+
     # --- Helper UI Methods ---
     def create_label(self, parent, text, is_admin_only=False):
         color = "#64748B" if is_admin_only else "#1E293B"
         tk.Label(parent, text=text, font=("Arial", 11, "bold"), bg="#FFFFFF", fg=color).pack(anchor="w", pady=(10, 0))
 
-    def create_entry(self, parent, initial_val, is_password=False):
-        show_char = "*" if is_password else ""
-        entry = tk.Entry(parent, font=("Arial", 12), bg="#F9FAFB", fg="#1E293B", 
-                         relief="solid", bd=1, show=show_char)
-        entry.insert(0, initial_val)
-        entry.pack(fill="x", pady=5, ipady=5)
+    def create_entry(self, parent, placeholder):
+        entry = tk.Entry(parent, font=("Arial", 11), bg="#F3F4F6", relief="flat")
+        entry.insert(0, placeholder)
+        entry.pack(fill="x", pady=(5, 15), ipady=8)
         return entry
 
     def create_readonly_text(self, parent, text):
-        lbl = tk.Label(parent, text=text, font=("Arial", 12), bg="#F3F4F6", fg="#9CA3AF", 
-                       anchor="w", padx=10, relief="solid", bd=1)
-        lbl.pack(fill="x", pady=5, ipady=5)
+        entry = tk.Entry(parent, font=("Arial", 11), bg="#F3F4F6", relief="flat")
+        entry.insert(0, text)
+        entry.config(state="readonly")
+        entry.pack(fill="x", pady=(5, 15), ipady=8)
+        return entry
 
     def save_settings(self):
-        # Logic to send updated data to Backend goes here
-        messagebox.showinfo("Success", "Settings updated successfully!")
+        user_id = self.controller.current_user_id
+        api_url = f"http://localhost:5000/srs/user/updateuser/{user_id}"
+
+        payload = {
+            "userName": self.first_name_entry.get(),
+            "userLastname": self.last_name_entry.get(),
+            "userPhone": self.phone_entry.get(),
+        }
+
+        try:
+            response = requests.put(api_url, json=payload, timeout=5)
+            if response.status_code == 200:
+                messagebox.showinfo("สำเร็จ", "อัปเดตข้อมูลส่วนตัวเรียบร้อยแล้ว!")
+                self.controller.current_user = payload["userName"]
+            else:
+                messagebox.showerror("ผิดพลาด", "ไม่สามารถบันทึกข้อมูลได้")
+        except Exception as e:
+            messagebox.showerror("Error", f"เชื่อมต่อเซิร์ฟเวอร์ไม่ได้: {e}")
+    
+    def delete_account(self):
+        if messagebox.askyesno("ยืนยัน", "คุณต้องการลบบัญชีนี้ใช่หรือไม่? ข้อมูลทั้งหมดจะหายไป!"):
+            user_id = self.controller.current_user_id
+            api_url = f"http://localhost:5000/srs/user/deluser/{user_id}"
+
+            try:
+                response = requests.delete(api_url, timeout=5)
+                if response.status_code == 200:
+                    messagebox.showinfo("สำเร็จ", "ลบบัญชีเรียบร้อยแล้ว")
+                    self.controller.show_frame("LoginPage") # เด้งกลับไปหน้า Login
+                else:
+                    messagebox.showerror("ผิดพลาด", "ไม่สามารถลบบัญชีได้")
+            except Exception as e:
+                messagebox.showerror("Error", f"เชื่อมต่อเซิร์ฟเวอร์ไม่ได้: {e}")
+                
+    def set_entry_text(self, entry, text):
+        """Helper: ปลดล็อกชั่วคราวเพื่อเขียนค่าใหม่จาก Database"""
+        if entry is None: return
+        
+        entry.config(state="normal") # 1. ปลดล็อก
+        entry.delete(0, tk.END)      # 2. ล้างค่า
+        entry.insert(0, str(text) if text else "") # 3. ใส่ค่าใหม่
+        entry.config(state="readonly") # 4. ล็อกกลับเป็น Read-only
+                
