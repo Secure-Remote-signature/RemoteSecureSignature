@@ -3,11 +3,41 @@ from tkinter import ttk, messagebox
 
 class ExecutionPage(tk.Frame):
     def __init__(self, parent, controller):
-        super().__init__(parent, bg="#0F172A")
+        super().__init__(parent, bg="#F9FAFB")
         self.controller = controller
-        self.progress_value = 0
+        self.current_request = None # เก็บข้อมูล request ที่กำลังทำ
+
+        tk.Label(self, text="📝 Document Execution", font=("Arial", 18, "bold"), bg="#F9FAFB").pack(pady=20)
+
+        # ส่วนแสดงผลรูปภาพเอกสาร (Placeholder)
+        self.image_label = tk.Label(self, text="[ รูปภาพเอกสารจะแสดงที่นี่ ]", bg="#E5E7EB", width=60, height=15)
+        self.image_label.pack(pady=10)
+
+        # ส่วนแสดงรายละเอียด
+        self.info_label = tk.Label(self, text="รอรับข้อมูล...", font=("Arial", 12), bg="#F9FAFB")
+        self.info_label.pack(pady=10)
+
+        # ปุ่มควบคุม
+        btn_frame = tk.Frame(self, bg="#F9FAFB")
+        btn_frame.pack(pady=20)
+
+        tk.Button(btn_frame, text="START CNC SIGNING", bg="#10B981", fg="white", font=("Arial", 12, "bold"),
+                  padx=20, pady=10, command=self.start_signing).pack(side="left", padx=10)
+        
+        tk.Button(btn_frame, text="CANCEL", bg="#64748B", fg="white", padx=20, pady=10,
+                  command=lambda: controller.show_frame("DashboardPage")).pack(side="left", padx=10)
 
         self.setup_ui()
+
+    def set_request_data(self, data):
+        """รับข้อมูลจาก Dashboard/Alert มาโชว์ในหน้านี้"""
+        self.current_request = data
+        self.info_label.config(text=f"กำลังดำเนินการ: {data['studentName']}\nเรื่อง: {data['requestNumber']}")
+    
+    def start_signing(self):
+        req_id = self.current_request['requestId']
+        messagebox.showinfo("CNC Status", "ส่งคำสั่งไปที่เครื่อง CNC เรียบร้อยแล้ว!")
+        self.controller.show_frame("DashboardPage")
 
     def setup_ui(self):
         # --- Top Status Bar ---
