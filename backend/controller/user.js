@@ -195,10 +195,36 @@ const getUserProfile = async (req, res) => {
   }
 };
 
+const changePassword = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { oldPassword, newPassword } = req.body;
+
+    const db = await open({ filename: "./database/remote.db", driver: sqlite3Verbose.Database });
+
+    // 1. ตรวจสอบรหัสผ่านเดิมก่อน
+    const user = await db.get("SELECT userPassword FROM users WHERE userId = ?", [id]);
+
+    if (!user || user.userPassword !== oldPassword) {
+      await db.close();
+      return res.status(401).json({ error: "รหัสผ่านเดิมไม่ถูกต้อง" });
+    }
+
+    // 2. ถ้าถูกต้อง ให้ทำการ Update เป็นรหัสใหม่
+    await db.run("UPDATE users SET userPassword = ? WHERE userId = ?", [newPassword, id]);
+    await db.close();
+
+    res.status(200).json({ message: "เปลี่ยนรหัสผ่านสำเร็จ" });
+  } catch (error) {
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
 export default {
   createUser,
   loginUser,
   deluser,
   updateUser,
   getUserProfile,
+  changePassword,
 };
