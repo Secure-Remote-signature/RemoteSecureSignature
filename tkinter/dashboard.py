@@ -10,7 +10,7 @@ class DashboardPage(tk.Frame):
         top_bar = tk.Frame(self, bg="#FFFFFF", height=60, bd=0, highlightthickness=1, highlightbackground="#E5E7EB")
         top_bar.pack(side="top", fill="x")
         
-        # Welcome text
+        # Welcome text 
         self.user_lbl = tk.Label(top_bar, text="Welcome, Professor", font=("Arial", 14, "bold"), 
                                  bg="#FFFFFF", fg="#1E293B")
         self.user_lbl.pack(side="left", padx=20, pady=15)
@@ -27,7 +27,7 @@ class DashboardPage(tk.Frame):
         # Logout button
         tk.Button(btn_container, text="LOGOUT", font=("Arial", 10, "bold"), 
                   bg="#EF4444", fg="#FFFFFF", relief="flat", padx=15,
-                  command=lambda: controller.show_frame("LoginPage")).pack(side="left", padx=5)
+                  command=self.controller.logout).pack(side="left", padx=5)
 
         # --- Main Content Area ---
         content_frame = tk.Frame(self, bg="#F9FAFB")
