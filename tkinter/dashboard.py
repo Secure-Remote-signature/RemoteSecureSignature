@@ -1,4 +1,6 @@
 import tkinter as tk
+from tkinter import messagebox, ttk
+from alert import IncomingAlert
 
 class DashboardPage(tk.Frame):
     def __init__(self, parent, controller):
@@ -53,3 +55,32 @@ class DashboardPage(tk.Frame):
         """Update the welcome label with the actual username after login"""
         if hasattr(self.controller, 'current_user'):
             self.user_lbl.config(text=f"Welcome, {self.controller.current_user}")
+  
+    def poll_for_requests(self):
+        """แอบถาม Backend ทุกๆ 3 วินาที ว่ามีใครส่งงานมาใหม่ไหม"""
+        prof_id = self.controller.current_user_id
+        api_url = f"http://localhost:5000/srs/request/latest/{prof_id}"
+
+        try:
+            response = requests.get(api_url, timeout=2)
+            if response.status_code == 200:
+                data = response.json()
+                
+                # ตรวจสอบว่าเป็นงานใหม่จริงไหม (เทียบ ID ล่าสุดเพื่อไม่ให้เด้งซ้ำ)
+                if data and data['requestId'] != self.last_notified_id:
+                    self.last_notified_id = data['requestId']
+                    self.show_alert(data)
+        except Exception as e:
+            print(f"Polling error: {e}")
+
+        # วนลูปตัวเองใหม่ทุกๆ 3 วินาที
+        self.after(3000, self.poll_for_requests)
+
+    def show_alert(self, data):
+        # เรียกใช้ Alert Class ที่เราแยกไฟล์ไว้
+        IncomingAlert(
+            self, 
+            data=data, 
+            on_accept=lambda: self.controller.show_frame("ExecutionPage"),
+            on_reject=self.handle_reject
+        )
