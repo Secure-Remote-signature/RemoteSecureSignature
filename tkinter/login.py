@@ -19,7 +19,7 @@ class LoginPage(tk.Frame):
                  bg="#FFFFFF", fg="#4F46E5").pack(pady=(40, 20))
         
         # Email Input Section
-        tk.Label(center_frame, text="Email:", font=("Arial", 12, "bold"), 
+        tk.Label(center_frame, text="อีเมล:", font=("Arial", 12, "bold"), 
                  bg="#FFFFFF", fg="#1E293B").pack(anchor="w", padx=40, pady=(10, 0))
         
         self.username_entry = tk.Entry(center_frame, font=("Arial", 14), bg="#F9FAFB", 
@@ -27,7 +27,7 @@ class LoginPage(tk.Frame):
         self.username_entry.pack(padx=40, pady=5, ipady=8, fill="x") 
         
         # Password Input Section
-        tk.Label(center_frame, text="Password:", font=("Arial", 12, "bold"), 
+        tk.Label(center_frame, text="รหัสผ่าน:", font=("Arial", 12, "bold"), 
                  bg="#FFFFFF", fg="#1E293B").pack(anchor="w", padx=40, pady=(10, 0))
         
         self.password_entry = tk.Entry(center_frame, font=("Arial", 14), bg="#F9FAFB", 
@@ -36,7 +36,7 @@ class LoginPage(tk.Frame):
 
         # --- FORGOT PASSWORD LINK ---
         # Align this text button to the right side of the card
-        tk.Button(center_frame, text="Forgot Password?", font=("Arial", 10, "underline"), 
+        tk.Button(center_frame, text="ลืมรหัสผ่าน?", font=("Arial", 10, "underline"), 
                   bg="#FFFFFF", fg="#4F46E5", activeforeground="#3730A3", 
                   relief="flat", bd=0, cursor="hand2",
                   command=lambda: self.controller.show_frame("ForgotPasswordPage")).pack(anchor="e", padx=40, pady=(5, 20))
