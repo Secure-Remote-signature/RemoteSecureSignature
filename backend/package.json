@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Backend API for Remote Secure Signature",
   "main": "server.js",
+  "type": "module",
   "scripts": {
     "start": "node backend.js",
     "dev": "nodemon backend.js",
@@ -15,7 +16,7 @@
     "express": "^4.22.1",
     "helmet": "^7.2.0",
     "sqlite": "^5.1.1",
-    "sqlite3": "^5.1.7"
+    "sqlite3": "^6.0.1"
   },
   "devDependencies": {
     "nodemon": "^3.1.11"
