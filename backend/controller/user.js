@@ -3,9 +3,11 @@ import sqlite3Verbose from "sqlite3";
 
 const createUser = async (req, res) => {
   try {
-    const { userName, userEmail, userPassword, userRole, userPhone, userDepId, userDepname } = req.body;
-    console.log(userName);
-    if (!userName || !userEmail || !userPassword || !userRole || !userPhone) {
+    const { userName, userLastname, userEmail, userPassword, userRole, 
+            userPhone, userDepId, userDepname } = req.body;
+
+    if (!userName || !userLastname || !userEmail || !userPassword 
+        || !userRole || !userPhone || !userDepId || !userDepname) {
       return res.status(400).json({ error: "All fields are required!" });
     }
 
@@ -15,14 +17,14 @@ const createUser = async (req, res) => {
     });
 
     const userDate = new Date().toISOString();
-
     const result = await db.run(
       `
-      INSERT INTO users (userName, userDate, userEmail, userPassword, userRole, userPhone, userDepId, userDepname)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO users (userName, userLastname, userDate, userEmail, userPassword, userRole, userPhone, userDepId, userDepname)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
       [
         userName,
+        userLastname,
         userDate,
         userEmail,
         userPassword,
@@ -34,27 +36,19 @@ const createUser = async (req, res) => {
     );
 
     await db.close();
-
-    res.status(201).json({
-      message: "User created successfully!",
-      userId: result.lastID,
-      userName: userName,
-    });
+    res.status(201).json({ message: "User created successfully!", userId: result.lastID });
   } catch (error) {
-    console.error("Error creating user:", error);
-
+    console.error("DEBUG ERROR:", error); // ดู Error ละเอียดใน Terminal
     if (error.code === "SQLITE_CONSTRAINT") {
-      return res
-        .status(409)
-        .json({ error: "This email is already registered." });
+      return res.status(409).json({ error: "This email is already registered." });
     }
-
-    res.status(500).json({ error: "Internal server erro3r" });
+    res.status(500).json({ error: "Internal server error" });
   }
 };
 
 const loginUser = async (req, res) => {
   try {
+    console.log("Incoming Login Body:", req.body);
     const { userEmail, userPassword } = req.body;
     if (!userEmail || !userPassword) {
       return res.status(400).json({ error: "Email and password are required!" });
@@ -133,11 +127,9 @@ const updateUser = async (req, res) => {
     const userId = req.params.id;
     const {
       userName,
-      userPassword,
-      userRole,
+      userLastname,
       userPhone,
-      userDepId,
-      userDepname,
+      userPassword,
     } = req.body;
 
     if (!userId) {
@@ -151,16 +143,15 @@ const updateUser = async (req, res) => {
     const result = await db.run(
       `
       UPDATE users
-      SET userName = ?, userPassword = ?, userRole = ?, userPhone = ?, userDepId = ?, userDepname = ?
+      SET userName = ?, userLastname = ?, userPhone = ?, userPassword = ?
       WHERE userId = ?
       `,
+
       [
         userName,
-        userPassword,
-        userRole,
+        userLastname,
         userPhone,
-        userDepId,
-        userDepname,
+        userPassword,
         userId,
       ],
     );
@@ -183,9 +174,31 @@ const updateUser = async (req, res) => {
   }
 };
 
+const getUserProfile = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const db = await open({ 
+      filename: "./database/remote.db", 
+      driver: sqlite3Verbose.Database });
+    
+    const user = await db.get(
+      "SELECT userName, userLastname, userEmail, userPhone, userDepname FROM users WHERE userId = ?", [id]);
+    await db.close();
+
+    if (user) {
+      res.status(200).json(user);
+    } else {
+      res.status(404).json({ error: "User not found" });
+    }
+  } catch (error) {
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
 export default {
   createUser,
   loginUser,
   deluser,
   updateUser,
+  getUserProfile,
 };
