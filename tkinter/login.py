@@ -1,6 +1,8 @@
 import tkinter as tk
 from tkinter import messagebox
 
+import requests
+
 class LoginPage(tk.Frame):
     def __init__(self, parent, controller):
         # Initialize the frame with a light gray background
@@ -51,17 +53,21 @@ class LoginPage(tk.Frame):
         user = self.username_entry.get()
         pwd = self.password_entry.get()
         
-        # Mock validation logic (Admin/Admin)
-        if user == "admin" and pwd == "admin":
-            # Clear fields for next session
-            self.username_entry.delete(0, tk.END)
-            self.password_entry.delete(0, tk.END)
-            
-            # Store the current user in the main controller state
-            self.controller.current_user = user
-            
-            # Switch to the Dashboard
-            self.controller.show_frame("DashboardPage")
-        else:
-            # Show error if login fails
-            messagebox.showerror("Login Failed", "Invalid Username or Password")
+        api_url = "http://localhost:5000/api/user/login"
+        payload = {"username": user, "password": pwd}
+        
+        try:
+            # Sending POST request with English comments for clarity
+            response = requests.post(api_url, json=payload, timeout=5)
+
+            if response.status_code == 200:
+                data = response.json()
+                self.controller.current_user = data.get("full_name")
+                
+                # Navigate to Dashboard on success
+                self.controller.show_frame("DashboardPage")
+            else:
+                messagebox.showerror("Login Failed", "Invalid credentials from server.")
+
+        except Exception as e:
+            messagebox.showerror("Connection Error", f"Cannot connect to Node.js server: {e}")
