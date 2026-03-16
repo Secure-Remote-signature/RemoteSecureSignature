@@ -75,7 +75,7 @@ class DashboardPage(tk.Frame):
             self.status_label.config(text="🔔 มี 1 รายการใหม่รอการเซ็นชื่อ", fg="#F59E0B")
 
         api_url = f"http://localhost:5000/srs/request/pending/{prof_id}"
-
+        data = None
         try:
             response = requests.get(api_url, timeout=2)
             
