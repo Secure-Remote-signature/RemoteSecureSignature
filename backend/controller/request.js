@@ -56,4 +56,70 @@ const getPendingForProfessor = async (req, res) => {
     }
 };
 
-export default { submitRequest, getPendingForProfessor };
+const updateStatus = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status } = req.body;
+        const db = await open({ filename: "./database/remote.db", driver: sqlite3.Database });
+        
+        await db.run("UPDATE requestSign SET requestStatus = ? WHERE requestId = ?", [status, id]);
+        await db.close();
+        res.json({ message: "Status updated" });
+    } catch (error) {
+        res.status(500).json({ error: "DB Error" });
+    }
+};
+
+// ฟังก์ชันรับพิกัดลายเซ็นและอัปเดตสถานะ
+const confirmSignature = async (req, res) => {
+    try {
+        const { requestId, points_px } = req.body;
+        const db = await open({ filename: "./database/remote.db", driver: sqlite3.Database });
+
+        // 1. อัปเดตสถานะงานเป็น 'Signed' 
+        // 2. เก็บพิกัด JSON ลงในคอลัมน์ (แนะนำให้แปลงเป็น String ก่อนเก็บ)
+        const sql = `
+            UPDATE requestSign 
+            SET requestStatus = 'Signed', 
+                signatureCoordinates = ? 
+            WHERE requestId = ?
+        `;
+
+        await db.run(sql, [JSON.stringify(points_px), requestId]);
+        await db.close();
+
+        console.log(`✅ Request ${requestId} has been signed and saved.`);
+        res.status(200).json({ message: "Signature confirmed and saved to DB" });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Failed to save signature data" });
+    }
+};
+
+const getPendingRequest = async (req, res) => {
+    try {
+        const { profId } = req.params;
+        const db = await open({ filename: "./database/remote.db", driver: sqlite3.Database });
+        
+        // ✅ แก้ SQL: ดึงเฉพาะงานที่ status เป็น 'Pending' เท่านั้น
+        const sql = `
+            SELECT * FROM requestSign 
+            WHERE ownerRequestID = ? AND requestStatus = 'Pending' 
+            ORDER BY requestId ASC LIMIT 1
+        `;
+        
+        const request = await db.get(sql, [profId]);
+        await db.close();
+        res.json(request || null);
+    } catch (error) {
+        res.status(500).json({ error: "DB Error" });
+    }
+};
+
+export default { 
+    submitRequest, 
+    getPendingForProfessor, 
+    updateStatus,
+    confirmSignature,
+    getPendingRequest
+};
