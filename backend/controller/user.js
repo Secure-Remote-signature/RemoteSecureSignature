@@ -200,9 +200,16 @@ const changePassword = async (req, res) => {
     const { id } = req.params;
     const { oldPassword, newPassword } = req.body;
 
+    console.log("Update Request for ID:", id);
+    console.log("Body Received:", req.body); 
+
+    if (!oldPassword || !newPassword) {
+      return res.status(400).json({ error: "กรุณาส่งข้อมูลให้ครบ (oldPassword, newPassword)" });
+    }
+
     const db = await open({ filename: "./database/remote.db", driver: sqlite3Verbose.Database });
 
-    // 1. ตรวจสอบรหัสผ่านเดิมก่อน
+    // 1. check old password
     const user = await db.get("SELECT userPassword FROM users WHERE userId = ?", [id]);
 
     if (!user || user.userPassword !== oldPassword) {
@@ -210,12 +217,22 @@ const changePassword = async (req, res) => {
       return res.status(401).json({ error: "รหัสผ่านเดิมไม่ถูกต้อง" });
     }
 
-    // 2. ถ้าถูกต้อง ให้ทำการ Update เป็นรหัสใหม่
-    await db.run("UPDATE users SET userPassword = ? WHERE userId = ?", [newPassword, id]);
+    // 2. validate new password
+    if (newPassword.trim() === "") {
+        await db.close();
+        return res.status(400).json({ error: "รหัสผ่านใหม่ต้องไม่เป็นค่าว่าง" });
+    }
+
+    // 3. Update
+    await db.run(
+      "UPDATE users SET userPassword = ? WHERE userId = ?", 
+      [newPassword, id]
+      );
     await db.close();
 
     res.status(200).json({ message: "เปลี่ยนรหัสผ่านสำเร็จ" });
   } catch (error) {
+    console.error("Change Pass Error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 };
