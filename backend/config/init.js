@@ -36,8 +36,8 @@ async function initializeDatabase() {
          requestRTSP TEXT NOT NULL,
          requestPicture TEXT NOT NULL,
          ownerRequestID INTEGER NOT NULL,
-         clientRequestID INTEGER NOT NULL
-         
+         clientRequestID INTEGER NOT NULL,
+         requestStatus TEXT DEFAULT 'Pending'
        );
      `);
 
