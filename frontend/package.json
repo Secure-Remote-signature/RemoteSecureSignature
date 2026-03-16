@@ -12,10 +12,14 @@
     "electron:dev": "concurrently -k \"cross-env BROWSER=none npm run dev\" \"wait-on http://localhost:3000 && npm run electron\""
   },
   "dependencies": {
+    "lucide-react": "^0.575.0",
     "next": "16.1.1",
+    "nodemailer": "^8.0.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "react-snowfall": "^2.4.0"
+    "react-easy-crop": "^5.5.6",
+    "react-snowfall": "^2.4.0",
+    "signature_pad": "^5.1.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

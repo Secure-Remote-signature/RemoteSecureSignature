@@ -1,23 +1,22 @@
 @import "tailwindcss";
 
+@theme {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  --breakpoint-pi: 700px;
+  --breakpoint-2xl: 1536px;
+}
+
+/* --- 2. CSS Variables (Dark/Light Mode) --- */
 :root {
   --background: #ffffff;
   --foreground: #171717;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-@theme
-{
-  --breakpoint-lg:100px;
-  --breakpoint-pi:700px;
-  --breakpoint-xl:1200px;
-  
-}
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
@@ -25,8 +24,11 @@
   }
 }
 
+/* --- 3. Base Styles --- */
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased; /* ทำให้ตัวหนังสือคมชัดขึ้น */
+  -moz-osx-font-smoothing: grayscale;
 }
