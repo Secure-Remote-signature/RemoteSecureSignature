@@ -346,6 +346,25 @@ const getFaculties = async (req, res) => {
   }
 };
 
+export const getAllStaff = async (req, res) => {
+    try {
+        const db = await open({ 
+            filename: "./database/remote.db", 
+            driver: sqlite3Verbose.Database 
+        });
+
+        const staffs = await db.all(
+            "SELECT userId, userName, userLastname FROM users WHERE userRole IN ('admin', 'staff', 'professor')"
+        );
+        
+        await db.close();
+        res.status(200).json(staffs);
+    } catch (error) {
+        console.error("Error fetching staff:", error);
+        res.status(500).json({ error: "Internal server error" });
+    }
+};
+
 
 export default {
   createUser,
@@ -357,4 +376,5 @@ export default {
   requestOTP,
   verifyOTP,
   getFaculties,
+  getAllStaff
 };
