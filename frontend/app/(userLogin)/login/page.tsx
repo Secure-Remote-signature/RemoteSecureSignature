@@ -53,11 +53,11 @@ export default function Login() {
       console.log("เข้าสู่ระบบสำเร็จ", response.data);
 
       if (response.data.token) {
-        localStorage.setItem("token", response.data.token);
+        sessionStorage.setItem("token", response.data.token);
       }
       if (response.status === 200) {
         const userData = response.data;
-        localStorage.setItem("user_session", JSON.stringify({
+        sessionStorage.setItem("user_session", JSON.stringify({
           token: userData.token,
           name: userData.name,
           lastName: userData.lastName,

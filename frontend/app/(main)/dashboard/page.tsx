@@ -10,7 +10,7 @@ export default function Dashboard() {
     const router = useRouter();
     const [machineStatus, setMachineStatus] = useState<'idle' | 'working'>('idle');
     useEffect(() => {
-        const savedData = localStorage.getItem("user_session");
+        const savedData = sessionStorage.getItem("user_session");
         if (!savedData) {
         router.push("/login");
         return;

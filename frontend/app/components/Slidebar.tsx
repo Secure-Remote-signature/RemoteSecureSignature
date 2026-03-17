@@ -24,7 +24,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
   const handleLogout = () => {
     if (confirm("คุณต้องการออกจากระบบใช่หรือไม่?")) {
-      localStorage.removeItem("user_session");
+      sessionStorage.removeItem("user_session");
       router.push("/login");
     }
   };

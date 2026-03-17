@@ -15,7 +15,7 @@ export default function Navbar({ onMenuClick, userName, userLastName }: { onMenu
   
   useEffect(() => {
     const fetchProfile = async () => {
-      const savedData = localStorage.getItem("user_session");
+      const savedData = sessionStorage.getItem("user_session");
       if (!savedData) return;
 
       try {
@@ -23,6 +23,7 @@ export default function Navbar({ onMenuClick, userName, userLastName }: { onMenu
         const userId = session.id;
         const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/srs/user/profile/${userId}`;
         const response = await axios.get(apiUrl);
+        // console.log()
         setUserProfile(response.data);
       } catch (error) {
         console.error("Error fetching profile in Navbar:", error);
