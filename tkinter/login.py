@@ -1,3 +1,4 @@
+from os import name
 import tkinter as tk
 from tkinter import messagebox
 
@@ -59,9 +60,9 @@ class LoginPage(tk.Frame):
         # 2. Prepare payload with keys matching your Node.js controller
         payload = {
             "userEmail": user_email, 
-            "userPassword": password
+            "userPassword": password,
         }
-
+        
         try:
             # 3. Send POST request to Node.js backend
             response = requests.post(api_url, json=payload, timeout=5)
@@ -70,14 +71,16 @@ class LoginPage(tk.Frame):
                 # Success: Parse JSON response
                 data = response.json()
                 
-                # Store user info in controller (using keys from your loginUser function)
-                self.controller.current_user_id = data.get("userId") 
-                self.controller.current_user = data.get("full_name")
+                self.controller.current_user_id = data.get("userId")
+                first_name = data.get("name", "")
+                last_name = data.get("lastName", "")
+                self.controller.current_user = f"{first_name} {last_name}"
                 self.controller.user_role = data.get("role")
                 
                 # Clear inputs and move to Dashboard
                 self.username_entry.delete(0, tk.END)
                 self.password_entry.delete(0, tk.END)
+                self.controller.current_user_id = data.get("userId")
                 self.controller.show_frame("DashboardPage")
                 
             elif response.status_code == 401:
