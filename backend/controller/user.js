@@ -10,10 +10,10 @@ let otpStore = {};
 const createUser = async (req, res) => {
   try {
     const { userName, userLastname, userEmail, userPassword, userRole, 
-            userPhone, userfacultyId, userfacultyName, userPin } = req.body;
+            userPhone, userfacultyId, userPin } = req.body;
 
     if (!userName || !userLastname || !userEmail || !userPassword 
-        || !userRole || !userPhone || !userfacultyId || !userfacultyName || !userPin) {
+        || !userRole || !userPhone || !userfacultyId || !userPin) {
       return res.status(400).json({ error: "All fields are required!" });
     }
 
@@ -25,8 +25,8 @@ const createUser = async (req, res) => {
     const userDate = new Date().toISOString();
     const result = await db.run(
       `
-      INSERT INTO users (userName, userLastname, userDate, userEmail, userPassword, userRole, userPhone, userfacultyId, userfacultyName, userPin)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO users (userName, userLastname, userDate, userEmail, userPassword, userRole, userPhone, userfacultyId, userPin)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
       [
         userName,
@@ -37,7 +37,6 @@ const createUser = async (req, res) => {
         userRole,
         userPhone,
         userfacultyId,
-        userfacultyName,
         userPin
       ],
     );
