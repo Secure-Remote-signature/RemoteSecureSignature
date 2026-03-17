@@ -73,7 +73,8 @@ const loginUser = async (req, res) => {
       res.status(200).json({
         message: "Login successful!",
         userId: user.userId,
-        full_name: user.userName,
+        name: user.userName,
+        lastName: user.userLastname,
         role: user.userRole,
         token: "fake-jwt-token",
       });
