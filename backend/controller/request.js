@@ -1,4 +1,3 @@
-// backend/controller/request.js
 import { open } from 'sqlite';
 import sqlite3 from 'sqlite3';
 import fs from 'fs';
@@ -9,8 +8,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const uploadDir = path.join(__dirname, '../uploads');
 
+// backend/controller/request.js
+
 const submitRequest = async (req, res) => {
-    const { docId, studentName, subject, documentImage, ownerId, clientId, message, rtsp } = req.body;
+    const { docId, subject, documentImage, ownerId, clientId, message, rtsp } = req.body;
 
     const fileName = `${docId}.png`;
     const filePath = path.join(uploadDir, fileName);
@@ -23,24 +24,38 @@ const submitRequest = async (req, res) => {
 
         try {
             const db = await open({ filename: "./database/remote.db", driver: sqlite3.Database });
+            
             const sql = `
                 INSERT INTO requestSign (
                     requestNumber, requestDate, requestMessage, 
                     requestRTSP, requestPicture, ownerRequestID, 
                     clientRequestID, requestStatus
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'Pending')
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             `;
 
-            await db.run(sql, [docId, new Date().toISOString(), message || subject, rtsp || "none", fileName, ownerId, clientId]);
+            const params = [
+                docId,
+                new Date().toISOString(),
+                message || subject,
+                rtsp || "none",
+                fileName,
+                ownerId,
+                clientId,
+                'Pending'
+            ];
+
+            console.log("📊 จำนวนคอลัมน์: 8 | จำนวน Params:", params.length); // ต้องได้ 8 เท่ากัน
+
+            await db.run(sql, params);
             await db.close();
+            
             res.status(200).json({ message: "Success", requestId: docId });
         } catch (dbErr) {
-            res.status(500).json({ error: "Database error" });
+            console.error("❌ SQL Error Details:", dbErr.message);
+            res.status(500).json({ error: "Database error: " + dbErr.message });
         }
     });
 };
-
-// ฟังก์ชันสำหรับ Polling ที่ Python จะมาเรียก
 const getPendingForProfessor = async (req, res) => {
     try {
         const { profId } = req.params;
@@ -52,6 +67,7 @@ const getPendingForProfessor = async (req, res) => {
         await db.close();
         res.json(request || null);
     } catch (error) {
+        console.error("❌ Error in getPendingForProfessor:", error);
         res.status(500).json({ error: "Server error" });
     }
 };
@@ -60,24 +76,27 @@ const updateStatus = async (req, res) => {
     try {
         const { id } = req.params;
         const { status } = req.body;
+        console.log(`📩 Received Update: ID=${id}, Status=${status}`); // เพิ่มไว้เช็ค
         const db = await open({ filename: "./database/remote.db", driver: sqlite3.Database });
-        
-        await db.run("UPDATE requestSign SET requestStatus = ? WHERE requestId = ?", [status, id]);
+        const result = await db.run("UPDATE requestSign SET requestStatus = ? WHERE requestId = ?", [status, id]);
         await db.close();
-        res.json({ message: "Status updated" });
+
+        if (result.changes > 0) {
+            res.json({ message: "Status updated" });
+        } else {
+            res.status(404).json({ error: "No record updated" });
+        }
     } catch (error) {
+        console.error("❌ Error in updateStatus:", error);
         res.status(500).json({ error: "DB Error" });
     }
 };
 
-// ฟังก์ชันรับพิกัดลายเซ็นและอัปเดตสถานะ
 const confirmSignature = async (req, res) => {
     try {
         const { requestId, points_px } = req.body;
         const db = await open({ filename: "./database/remote.db", driver: sqlite3.Database });
 
-        // 1. อัปเดตสถานะงานเป็น 'Signed' 
-        // 2. เก็บพิกัด JSON ลงในคอลัมน์ (แนะนำให้แปลงเป็น String ก่อนเก็บ)
         const sql = `
             UPDATE requestSign 
             SET requestStatus = 'Signed', 
@@ -101,7 +120,6 @@ const getPendingRequest = async (req, res) => {
         const { profId } = req.params;
         const db = await open({ filename: "./database/remote.db", driver: sqlite3.Database });
         
-        // ✅ แก้ SQL: ดึงเฉพาะงานที่ status เป็น 'Pending' เท่านั้น
         const sql = `
             SELECT * FROM requestSign 
             WHERE ownerRequestID = ? AND requestStatus = 'Pending' 
