@@ -16,7 +16,11 @@ const app = express();
 const port = 5000;
 
 // 1. Middleware
-app.use(cors());
+app.use(cors({
+    origin: "*", // อนุญาตทุกที่ (แต่ credentials จะใช้ไม่ได้ถ้าเป็น *)
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization"]
+}));
 app.use(express.json({ limit: '50mb' })); 
 app.use(express.urlencoded({ limit: '50mb', extended: true })); 
 
