@@ -13,5 +13,6 @@ user.put('/change-password/:id', userController.changePassword);
 user.post('/request-otp', userController.requestOTP);
 user.post('/verify-otp', userController.verifyOTP);
 user.get('/faculties', userController.getFaculties);
+user.get('/staff', userController.getAllStaff);
 
 export default user;
