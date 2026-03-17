@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Loader2, CheckCircle2, MessageSquareX, ArrowLeft } from 'lucide-react'; 
 import "@/app/styles/components.css";
 import { useRouter } from 'next/navigation';
+import axios from 'axios';
 
 export default function Dashboard() {
     const router = useRouter();
@@ -11,7 +12,6 @@ export default function Dashboard() {
     useEffect(() => {
         const savedData = localStorage.getItem("user_session");
         if (!savedData) {
-        // ถ้าไม่มีข้อมูล ให้ดีดกลับไปหน้า Login ทันที
         router.push("/login");
         return;
         }
@@ -22,6 +22,23 @@ export default function Dashboard() {
         router.push("/login");
         }
     }, [router]);
+
+    useEffect(() => {
+        const checkStatus = async () => {
+            try {
+            const response = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/srs/machine/status`);
+            if (response.data.status) {
+                setMachineStatus(response.data.status);
+            }
+            } catch (error) {
+            console.error("เชื่อมต่อสถานะเครื่องไม่ได้:", error);
+            }
+        };
+        checkStatus();
+        const interval = setInterval(checkStatus, 3000);
+
+        return () => clearInterval(interval); // เคลียร์เมื่อปิดหน้าจอ
+        }, []);
 
     // const [incomingDoc, setIncomingDoc] = useState<{ sender: string, subject: string, details: string } | null>(null);
     
