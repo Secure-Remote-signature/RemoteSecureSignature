@@ -6,9 +6,15 @@ import {
   FilePlus, CheckCircle, Loader2, ChevronRight, Camera, 
   Check, RefreshCcw, ZoomIn, Upload
 } from 'lucide-react';
-import Cropper from 'react-easy-crop';
+import Cropper, { Area } from 'react-easy-crop';
 import "@/app/styles/components.css";
 import axios from 'axios';
+
+interface Professor {
+    userId: string;
+    userName: string;
+    userLastname: string;
+}
 
 export default function RequestDocumentPage() {
     const router = useRouter();
@@ -17,15 +23,16 @@ export default function RequestDocumentPage() {
     const [isSubmitted, setIsSubmitted] = useState(false);
     
     // --- ข้อมูล User และรายชื่ออาจารย์ ---
-    const [professors, setProfessors] = useState<any[]>([]);
+    const [professors, setProfessors] = useState<Professor[]>([]);
     const [selectedProfId, setSelectedProfId] = useState("");
     const [currentUserId, setCurrentUserId] = useState("");
 
     // --- ข้อมูลฟอร์ม ---
     const [formData, setFormData] = useState({
-        studentName: "",
-        studentId: "",
-        lastName: "",
+        Name: "",
+        LastName: "",
+        Role: "",
+        Id: "",
         subject: "",
         details: ""
     });
@@ -35,26 +42,26 @@ export default function RequestDocumentPage() {
     const [isFetchingCamera, setIsFetchingCamera] = useState(false);
     const [crop, setCrop] = useState({ x: 0, y: 0 });
     const [zoom, setZoom] = useState(1);
-    const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
+    const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
 
     // 1. ดึงข้อมูล User และ รายชื่ออาจารย์ ทันทีที่โหลดหน้า
     useEffect(() => {
-        const savedData = localStorage.getItem("user_session");
+        const savedData = sessionStorage.getItem("user_session");
         if (savedData) {
             const user = JSON.parse(savedData);
             setCurrentUserId(user.id);
             setFormData(prev => ({
                 ...prev,
-                studentName: user.name,
-                lastName: user.lastName,
-                studentId: user.id
+                Name: user.name,
+                LastName: user.lastName,
+                Id: user.id,
+                Role: user.role
             }));
         }
 
         const fetchProfessors = async () => {
             try {
-                // อย่าลืมเพิ่ม Route นี้ใน Backend: /srs/user/all-staff
-                const res = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/srs/user/all-staff`);
+                const res = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/srs/user/staff`);
                 setProfessors(res.data);
             } catch (err) {
                 console.error("ดึงรายชื่ออาจารย์ไม่สำเร็จ", err);
@@ -81,7 +88,7 @@ export default function RequestDocumentPage() {
         }, 2000);
     };
 
-    const onCropComplete = useCallback((_ : any, croppedAreaPixels: any) => {
+    const onCropComplete = useCallback((_: Area, croppedAreaPixels: Area) => {
         setCroppedAreaPixels(croppedAreaPixels);
     }, []);
 
@@ -95,9 +102,10 @@ export default function RequestDocumentPage() {
 
         const payload = {
             docId: "DOC-" + Date.now(),
-            studentName: formData.studentName,
-            studentLastName: formData.lastName,
-            studentId: formData.studentId,
+            Name: formData.Name,
+            LastName: formData.LastName,
+            Role: formData.Role,
+            Id: formData.Id,
             subject: formData.subject,
             message: formData.details,
             documentImage: image,
@@ -159,8 +167,8 @@ export default function RequestDocumentPage() {
                                             type="text" 
                                             placeholder="ชื่อ" 
                                             className={inputStyle} 
-                                            value={formData.studentName}
-                                            onChange={(e) => setFormData({...formData, studentName: e.target.value})} 
+                                            value={formData.Name}
+                                            onChange={(e) => setFormData({...formData, Name: e.target.value})} 
                                             readOnly
                                         />
                                     </div>
@@ -172,8 +180,8 @@ export default function RequestDocumentPage() {
                                                 type="text" 
                                                 placeholder="นามสกุล" 
                                                 className={inputStyle} 
-                                                value={formData.lastName}
-                                                //onChange={(e) => setFormData({...formData, lastName: e.target.value})} 
+                                                value={formData.LastName}
+                                                //onChange={(e) => setFormData({...formData, LastName: e.target.value})} 
                                                 readOnly
                                             
                                             />
