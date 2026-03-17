@@ -22,6 +22,13 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     { name: 'คำร้องขอ', href: '/requestpage', icon: FilePen },    // (สมมติ path ไว้ก่อน)'
   ];
 
+  const handleLogout = () => {
+    if (confirm("คุณต้องการออกจากระบบใช่หรือไม่?")) {
+      localStorage.removeItem("user_session");
+      router.push("/login");
+    }
+  };
+
   return (
     <>
       {/* 1. Overlay (ฉากหลังสีดำจางๆ) - กดแล้วปิดเมนูได้ */}
@@ -72,10 +79,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         <div className="p-4 border-t border-gray-100">
           <button 
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-500 hover:bg-red-50 transition-colors font-medium"
-            onClick={() => { 
-                router.push('/login'); // สมมติว่า logout แล้วไปหน้า login
-                // console.log("Logout");
-            }}
+            onClick={handleLogout}
           >
             <LogOut size={22} />
             ออกจากระบบ
