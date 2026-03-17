@@ -97,7 +97,7 @@ class SettingPage(tk.Frame):
                 
                 # Read-only fields
                 self.set_entry_text(self.position_entry, data.get('userRole'))
-                self.set_entry_text(self.faculty_entry, data.get('userDepname'))
+                self.set_entry_text(self.faculty_entry, data.get('userfacultyName'))
                 self.set_entry_text(self.email_entry, data.get('userEmail'))
                 
                 print("Data loaded successfully!")
