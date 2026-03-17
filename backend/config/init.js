@@ -14,19 +14,27 @@ async function initializeDatabase() {
     console.log("Connected to SQLite database.");
 
     await db.exec(`
+       CREATE TABLE IF NOT EXISTS faculties (
+         facultyId INTEGER PRIMARY KEY AUTOINCREMENT,
+         facultyName TEXT NOT NULL UNIQUE
+       );
+    `);
+
+    await db.exec(`
        CREATE TABLE IF NOT EXISTS users (
         userId INTEGER PRIMARY KEY AUTOINCREMENT,
         userName TEXT,
         userLastname TEXT,
         userDate TEXT,
-        userEmail email UNIQUE,
+        userEmail TEXT UNIQUE,
         userPassword TEXT,
         userRole TEXT,
         userPhone TEXT,
-        userDepId TEXT,
-        userDepname TEXT
+        userfacultyId INTEGER,
+        userPin TEXT,
+        FOREIGN KEY (userfacultyId) REFERENCES faculties(facultyId)
+       );`
       );
-     `);
     await db.exec(`
        CREATE TABLE IF NOT EXISTS requestSign (
          requestId INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -41,6 +49,22 @@ async function initializeDatabase() {
          signatureCoordinates TEXT
        );
      `);
+
+    const facultyCheck = await db.get("SELECT COUNT(*) as count FROM faculties");
+    if (facultyCheck.count === 0) {
+      const defaultFaculties = [
+        "คณะวิศวกรรมศาสตร์",
+        "คณะวิทยาศาสตร์",
+        "คณะวิทยาการจัดการ",
+        "คณะเศรษฐศาสตร์",
+        "คณะพาณิชยนาวีนานาชาติ"
+      ];
+
+      for (const name of defaultFaculties) {
+        await db.run("INSERT INTO faculties (facultyName) VALUES (?)", [name]);
+      }
+      console.log("Default faculties seeded!");
+    }
 
     console.log("Database initialized successfully!");
     await db.close();
