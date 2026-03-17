@@ -55,9 +55,6 @@ export default function Login() {
       }
       if (response.status === 200) {
         const userData = response.data;
-        
-        // เก็บข้อมูลลงเครื่อง (Browser Storage)
-        // หมายเหตุ: ต้องแปลง Object เป็น String ก่อนเก็บ
         localStorage.setItem("user_session", JSON.stringify({
           token: userData.token,
           name: userData.full_name,
