@@ -7,7 +7,7 @@ class PinConfirmPage(tk.Frame):
         super().__init__(parent, bg="#F9FAFB")
         self.controller = controller
         self.pin_code = "" # Store entered digits
-        self.correct_pin = "1234" # Mock PIN for testing
+        self.correct_pin = "123456" # Mock PIN for testing
         
         # --- UI Setup ---
         # Center Container (The Card)
@@ -18,11 +18,11 @@ class PinConfirmPage(tk.Frame):
         tk.Label(container, text="Security Verification", font=("Arial", 18, "bold"), 
                  bg="#FFFFFF", fg="#1E293B").pack(pady=(30, 10))
         
-        tk.Label(container, text="Enter your 4-digit PIN to confirm", font=("Arial", 11), 
+        tk.Label(container, text="Enter your 6-digit PIN to confirm", font=("Arial", 11), 
                  bg="#FFFFFF", fg="#64748B").pack(pady=(0, 20))
 
         # --- PIN Display (The Dots) ---
-        self.dots_label = tk.Label(container, text="○ ○ ○ ○", font=("Arial", 30), 
+        self.dots_label = tk.Label(container, text="○ ○ ○ ○ ○ ○", font=("Arial", 30), 
                                    bg="#FFFFFF", fg="#4F46E5")
         self.dots_label.pack(pady=20)
 
@@ -72,7 +72,7 @@ class PinConfirmPage(tk.Frame):
             self.verify_pin()
             return
         else:
-            if len(self.pin_code) < 4:
+            if len(self.pin_code) < 6:
                 self.pin_code += key
         
         self.update_dots()
@@ -80,7 +80,7 @@ class PinConfirmPage(tk.Frame):
     def update_dots(self):
         """Update the visual display of entered PIN digits"""
         entered = len(self.pin_code)
-        display = "● " * entered + "○ " * (4 - entered)
+        display = "● " * entered + "○ " * (6 - entered)
         self.dots_label.config(text=display.strip())
 
     def verify_pin(self):
