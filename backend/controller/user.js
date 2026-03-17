@@ -329,6 +329,23 @@ const verifyOTP = async (req, res) => {
     }
 };
 
+const getFaculties = async (req, res) => {
+  try {
+    const db = await open({ 
+      filename: "./database/remote.db", 
+      driver: sqlite3Verbose.Database 
+    });
+
+    const faculties = await db.all("SELECT * FROM faculties ORDER BY facultyName ASC");
+    
+    await db.close();
+    res.status(200).json(faculties);
+  } catch (error) {
+    console.error("Error fetching faculties:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
 
 export default {
   createUser,
@@ -339,4 +356,5 @@ export default {
   changePassword,
   requestOTP,
   verifyOTP,
+  getFaculties,
 };
