@@ -6,9 +6,9 @@ from alert import IncomingAlert
 
 class DashboardPage(tk.Frame):
     def __init__(self, parent, controller):
-        # Background color: #F9FAFB
         super().__init__(parent, bg="#F9FAFB")
         self.controller = controller
+        self.prof_id = None
         
         self.last_notified_id = None  # To track the last notified request ID for polling
         
@@ -60,56 +60,65 @@ class DashboardPage(tk.Frame):
     def update_user_info(self):
         self.last_notified_id = None
         
+        if hasattr(self.controller, 'current_user_id'):
+            self.prof_id = self.controller.current_user_id
+            print(f"DEBUG: Dashboard ได้รับ ID อาจารย์แล้ว: {self.prof_id}")
+
         if hasattr(self.controller, 'current_user'):
             self.user_lbl.config(text=f"Welcome, {self.controller.current_user}")
   
     def poll_for_requests(self):
-        prof_id = self.controller.current_user_id
-        if not prof_id:
+        if self.prof_id is None:
             self.after(3000, self.poll_for_requests)
             return
-        
-        if not data:
-            self.status_label.config(text="✅ ทุกอย่างเรียบร้อย! ไม่มีงานค้าง", fg="#10B981")
-        else:
-            self.status_label.config(text="🔔 มี 1 รายการใหม่รอการเซ็นชื่อ", fg="#F59E0B")
 
-        api_url = f"http://localhost:5000/srs/request/pending/{prof_id}"
-        data = None
         try:
-            response = requests.get(api_url, timeout=2)
+            url = f"http://localhost:5000/srs/request/pending/{self.prof_id}"
+            response = requests.get(url, timeout=3)
             
             if response.status_code == 200:
                 data = response.json()
                 
-                # ถ้ามีงาน (data ไม่เป็น None) และเป็นงานใหม่ (ID ไม่ซ้ำเดิม)
-                if data and data.get('requestId') != self.last_notified_id:
-                    self.last_notified_id = data.get('requestId')
-                    self.trigger_alert(data)
+                if data and "requestId" in data:
+                    print(f"✅ เจอคำร้องจากคุณ: {data.get('studentName')}")
+                    
+                    self.trigger_alert(data) 
+                    return 
+                else:
+                    print(f"😴 ID {self.prof_id}: ยังไม่มีคำร้องใหม่...")
                     
         except Exception as e:
-            print(f"Polling error: {e}")
+            print(f"❌ Connection Error: {e}")
 
         self.after(3000, self.poll_for_requests)
 
     def trigger_alert(self, data):
-        from alert import IncomingAlert # Import class ที่เราแยกไฟล์ไว้
-        
+        from alert import IncomingAlert
+        self.last_notified_id = data.get('requestId') 
+
         alert = IncomingAlert(
             self, 
             data=data, 
-            on_accept=lambda: self.controller.show_frame("ExecutionPage", data=data),
-            on_reject=self.handle_reject
+            on_accept=lambda: self.accept_action(data),
+            on_reject=lambda: self.handle_reject(data)
         )
+        self.wait_window(alert) 
+        self.poll_for_requests() 
+
+    def accept_action(self, data):
+        self.controller.show_frame("ExecutionPage", data=data)
     
-    def handle_reject(self):
-        req_id = self.last_notified_id
+    def handle_reject(self, data):
+        req_id = data.get('requestId')
         api_url = f"http://localhost:5000/srs/request/update-status/{req_id}"
         
         try:
-            requests.put(api_url, json={"status": "Rejected"})
-            messagebox.showinfo("สำเร็จ", "ปฏิเสธคำร้องเรียบร้อยแล้ว")
-        except:
-            pass
+            res = requests.put(api_url, json={"status": "Rejected"}, timeout=3)
+            if res.status_code == 200:
+                messagebox.showinfo("สำเร็จ", "ปฏิเสธคำร้องแล้ว")
+            else:
+                print(f"Update failed: {res.status_code}")
+        except Exception as e:
+            print(f"Error rejecting: {e}")
     
     
