@@ -59,12 +59,13 @@ export default function Login() {
         const userData = response.data;
         localStorage.setItem("user_session", JSON.stringify({
           token: userData.token,
-          name: userData.full_name,
+          name: userData.name,
+          lastName: userData.lastName,
           role: userData.role,
           id: userData.userId
         }));
 
-        alert(`ยินดีต้อนรับคุณ ${userData.full_name}`);
+        alert(`ยินดีต้อนรับคุณ ${userData.name} ${userData.lastName}`);
         router.push('/dashboard');
       }
     } catch (error: unknown) {
