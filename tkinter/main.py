@@ -70,6 +70,10 @@ class MainApp(tk.Tk):
         if page_name in self.frames:
             frame = self.frames[page_name]
             
+            def update_user_info(self):
+                self.prof_id = self.controller.current_user_id
+                print(f"DEBUG: Dashboard updated for Prof ID: {self.prof_id}")
+            
             if hasattr(frame, "clear_fields"):
                 frame.clear_fields()
             
