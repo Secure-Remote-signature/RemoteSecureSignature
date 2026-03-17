@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Loader2, CheckCircle2, MessageSquareX, ArrowLeft } from 'lucide-react'; 
 import "@/app/styles/components.css";
 import { useRouter } from 'next/navigation';
@@ -8,33 +8,48 @@ import { useRouter } from 'next/navigation';
 export default function Dashboard() {
     const router = useRouter();
     const [machineStatus, setMachineStatus] = useState<'idle' | 'working'>('idle');
-    const [incomingDoc, setIncomingDoc] = useState<{ sender: string, subject: string, details: string } | null>(null);
+    useEffect(() => {
+        const savedData = localStorage.getItem("user_session");
+        if (!savedData) {
+        // ถ้าไม่มีข้อมูล ให้ดีดกลับไปหน้า Login ทันที
+        router.push("/login");
+        return;
+        }
+        try {
+        JSON.parse(savedData);
+        } catch (error) {
+        console.error("Error parsing user data", error);
+        router.push("/login");
+        }
+    }, [router]);
+
+    // const [incomingDoc, setIncomingDoc] = useState<{ sender: string, subject: string, details: string } | null>(null);
     
     // State สำหรับจัดการการปฏิเสธเอกสาร
-    const [isRejecting, setIsRejecting] = useState(false);
-    const [rejectReason, setRejectReason] = useState("");
+    // const [isRejecting, setIsRejecting] = useState(false);
+    // const [rejectReason, setRejectReason] = useState("");
 
-    const handleSimulateIncoming = () => {
-        setIncomingDoc({
-            sender: "นางสาวสมหญิง ใจดี",
-            subject: "เอกสารอนุมัติจบการศึกษา",
-            details: "เรียนอาจารย์สมชาย อาจหาญ ดิฉันนางสาวสมหญิง ใจดี นิสิตปี 4 รหัสนิสิต 6530300001 มีความประสงค์จะขออนุมัติจบการศึกษา จึงขอความอนุเคราะห์จากอาจารย์ในการลงนามอนุมัติเอกสารนี้ด้วยค่ะ"
-        });
-        setIsRejecting(false);
-        setRejectReason("");
-    };
+    // const handleSimulateIncoming = () => {
+    //     setIncomingDoc({
+    //         sender: "นางสาวสมหญิง ใจดี",
+    //         subject: "เอกสารอนุมัติจบการศึกษา",
+    //         details: "เรียนอาจารย์สมชาย อาจหาญ ดิฉันนางสาวสมหญิง ใจดี นิสิตปี 4 รหัสนิสิต 6530300001 มีความประสงค์จะขออนุมัติจบการศึกษา จึงขอความอนุเคราะห์จากอาจารย์ในการลงนามอนุมัติเอกสารนี้ด้วยค่ะ"
+    //     });
+    //     setIsRejecting(false);
+    //     setRejectReason("");
+    // };
 
-    const handleConfirmReject = () => {
-        if (!rejectReason.trim()) {
-            alert("กรุณาระบุเหตุผลการปฏิเสธเอกสารครับ");
-            return;
-        }
-        console.log("ปฏิเสธเอกสารเพราะ:", rejectReason);
-        alert("ส่งข้อมูลการปฏิเสธเอกสารเรียบร้อยแล้ว");
-        setIsRejecting(false);
-        setRejectReason("");
-        setIncomingDoc(null);
-    };
+    // const handleConfirmReject = () => {
+    //     if (!rejectReason.trim()) {
+    //         alert("กรุณาระบุเหตุผลการปฏิเสธเอกสารครับ");
+    //         return;
+    //     }
+    //     console.log("ปฏิเสธเอกสารเพราะ:", rejectReason);
+    //     alert("ส่งข้อมูลการปฏิเสธเอกสารเรียบร้อยแล้ว");
+    //     setIsRejecting(false);
+    //     setRejectReason("");
+    //     setIncomingDoc(null);
+    // };
 
     return (  
         <div className="bg-vibrant-indigo h-full w-full flex items-center justify-center relative overflow-hidden">
@@ -79,24 +94,22 @@ export default function Dashboard() {
             </div>
 
             {/* === ส่วน MODAL แจ้งเตือนเอกสารเข้า === */}
+            {/*
             {incomingDoc && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
                     <div className="absolute inset-0 bg-[#1e1b4b]/90 backdrop-blur-sm animate-fade-in" />
 
                     <div className="relative bg-white w-full max-w-md rounded-[20px] shadow-2xl flex flex-col max-h-[95vh] animate-zoom-in">
                         
-                        {/* Header ของ Modal (ลด padding ลงนิดนึง) */}
                         <div className={`${!isRejecting ? 'bg-[#4F46E5]' : 'bg-[#DC2626]'} py-3 pi:py-4 text-center shrink-0 transition-colors rounded-t-[20px]`}>
                             <h2 className="text-white text-lg pi:text-xl md:text-2xl font-bold">
                                 {!isRejecting ? 'มีเอกสารรอการลงนาม!!' : 'ระบุเหตุผลการปฏิเสธ'}
                             </h2>
                         </div>
 
-                        {/* 🔥 แก้จอล้น: ใส่ overflow-y-auto ตรงนี้ เพื่อให้เนื้อหาข้างในเลื่อนได้ */}
                         <div className="p-4 pi:p-6 flex flex-col gap-3 overflow-y-auto custom-scrollbar">
                             
                             {!isRejecting ? (
-                                /* 1️⃣ หน้าจอปกติ: โชว์รายละเอียดเอกสาร */
                                 <>
                                     <div className="text-base pi:text-lg text-gray-700 space-y-2">
                                         <p><span className="font-bold text-gray-900">จาก: </span> {incomingDoc.sender}</p>
@@ -114,7 +127,6 @@ export default function Dashboard() {
                                         ดูเอกสาร
                                     </button>
 
-                                    {/* ลด padding ของปุ่มลง เพื่อประหยัดพื้นที่แนวตั้ง */}
                                     <div className="flex gap-3 mt-2 shrink-0">
                                         <button 
                                             onClick={() => router.push('/signing?id=DOC-001')} 
@@ -131,7 +143,6 @@ export default function Dashboard() {
                                     </div>
                                 </>
                             ) : (
-                                /* 2️⃣ หน้าจอกรอกเหตุผลการปฏิเสธ */
                                 <div className="animate-fade-in flex flex-col gap-3">
                                     <div className="text-center text-gray-500 mb-1">
                                         <MessageSquareX className="2xl:w-10 2xl:h-10 pi:w-7 pi:h-7 mx-auto text-red-400 mb-2" />
@@ -167,10 +178,10 @@ export default function Dashboard() {
                         </div>
                     </div>
                 </div>
-            )}
+            )} */}
 
             {/* --- ปุ่มทดสอบมุมขวาล่าง --- */}
-            <div className="absolute bottom-5 right-5 flex flex-col gap-2 z-40 scale-90 origin-bottom-right pi:scale-100">
+            {/* <div className="absolute bottom-5 right-5 flex flex-col gap-2 z-40 scale-90 origin-bottom-right pi:scale-100">
                 <button 
                     onClick={handleSimulateIncoming}
                     className="bg-green-500/90 hover:bg-green-600 text-white px-4 py-2 rounded-lg backdrop-blur-sm shadow-lg animate-pulse text-sm font-bold"
@@ -183,7 +194,10 @@ export default function Dashboard() {
                 >
                     Test Status: {machineStatus.toUpperCase()}
                 </button>
-            </div>
+            </div> */}
+
+            {/* --- ปุ่ม Logout มุมบนขวา --- */}
+            
 
         </div>
     );
