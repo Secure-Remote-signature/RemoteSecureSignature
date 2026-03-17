@@ -5,7 +5,7 @@ class IncomingAlert(tk.Toplevel):
     def __init__(self, parent, data, on_accept, on_reject):
         super().__init__(parent)
         self.title("New Request")
-        self.geometry("450x350+500+200")
+        self.geometry("450x420+500+200") # เพิ่มความสูงเล็กน้อย
         self.overrideredirect(True)
         self.attributes("-topmost", True)
         self.configure(bg="#FFFFFF")
@@ -20,34 +20,34 @@ class IncomingAlert(tk.Toplevel):
         content = tk.Frame(self, bg="#FFFFFF", padx=20, pady=15)
         content.pack(fill="both", expand=True)
 
-        # Helper function to add label pairs
-        def add_info(label, text, font_weight="normal"):
+        def add_info(label, text):
             row = tk.Frame(content, bg="#FFFFFF")
-            row.pack(fill="x", pady=2)
-            tk.Label(row, text=label, font=("Arial", 11, "bold"), bg="#FFFFFF", fg="#1E293B").pack(side="left")
+            row.pack(fill="x", pady=5)
+            tk.Label(row, text=label, font=("Arial", 11, "bold"), bg="#FFFFFF", fg="#1E293B", width=8, anchor="w").pack(side="left")
             tk.Label(row, text=text, font=("Arial", 11), bg="#FFFFFF", fg="#475569").pack(side="left", padx=5)
 
-        add_info("จาก:", data.get("student_name", "ไม่ระบุชื่อ"))
-        add_info("เรื่อง:", data.get("subject", "ไม่ระบุเรื่อง"))
+        add_info("ผู้ส่ง:", data.get('studentName', 'ไม่ระบุชื่อ'))
+        add_info("เลขที่:", data.get('requestNumber', '-'))
+        add_info("เรื่อง:", data.get('requestMessage', 'ไม่มีรายละเอียด'))
         
-        tk.Label(content, text="รายละเอียด:", font=("Arial", 11, "bold"), bg="#FFFFFF").pack(anchor="w", pady=(10, 5))
-        
+        # --- detail ---
+        tk.Label(content, text="ข้อความจากผู้ส่ง:", font=("Arial", 11, "bold"), bg="#FFFFFF", fg="#1E293B").pack(anchor="w", pady=(10, 5))
         detail_box = tk.Text(content, font=("Arial", 10), bg="#F8FAFC", relief="flat", height=4, padx=10, pady=10)
-        detail_box.insert("1.0", data.get("details", ""))
+        detail_box.insert("1.0", data.get("requestMessage", "ไม่มีรายละเอียดเพิ่มเติม"))
         detail_box.config(state="disabled")
         detail_box.pack(fill="x")
 
-        view_link = tk.Label(content, text="ดูเอกสาร", font=("Arial", 10, "underline"), bg="#FFFFFF", fg="#5D5CDE", cursor="hand2")
-        view_link.pack(pady=5)
+        view_link = tk.Label(content, text="คลิกเพื่อดูตัวอย่างเอกสาร", font=("Arial", 10, "underline"), 
+                             bg="#FFFFFF", fg="#5D5CDE", cursor="hand2")
+        view_link.pack(pady=10)
+        view_link.bind("<Button-1>", lambda e: [self.destroy(), on_accept()])
 
         # --- Buttons ---
         btn_frame = tk.Frame(content, bg="#FFFFFF")
         btn_frame.pack(fill="x", pady=10)
-
         tk.Button(btn_frame, text="ลงนามเอกสาร", bg="#5D5CDE", fg="white", font=("Arial", 11, "bold"),
-                  relief="flat", width=18, pady=8, 
+                  relief="flat", width=18, pady=8, cursor="hand2",
                   command=lambda: [self.destroy(), on_accept()]).pack(side="left", expand=True, padx=5)
-
         tk.Button(btn_frame, text="ปฏิเสธ", bg="#E11D48", fg="white", font=("Arial", 11, "bold"),
-                  relief="flat", width=18, pady=8,
+                  relief="flat", width=18, pady=8, cursor="hand2",
                   command=lambda: [self.destroy(), on_reject()]).pack(side="left", expand=True, padx=5)
