@@ -11,11 +11,13 @@ export default function Login() {
     text-Slate-gray 
     mt-3 
     ring-1 ring-[#C3C5CB] 
-    py-2
+    py-3
     pi:text-[16px] 2xl:text-[24px] 
-    pi:rounded-[30px] 2xl:rounded-[50px] 
-    pi:px-4 2xl:px-6 
-    pi:mb-5 2xl:mb-5 
+    pi:rounded-[30px] 2xl:rounded-[50px] rounded-[30px]
+    outline-none focus:ring-2 focus:ring-[#4F46E5] 
+    transition-all
+    pi:px-4 2xl:px-5 px-3
+    pi:mb-5 2xl:mb-5 mb-2
     outline-none 
     focus:ring-2 focus:ring-[#4F46E5] 
     transition-all
@@ -28,7 +30,7 @@ export default function Login() {
     rounded-[30px] 
     p-3 
     hover:opacity-90 hover:shadow-lg transition-all
-    pi:text-[16px] 2xl:text-[24px]
+    pi:text-[16px] 2xl:text-[24px] text-[18px]
   `;
   
   const [email, setEmail] = useState("");
@@ -79,15 +81,15 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen relative flex items-center justify-center">
+    <div className="w-full h-full relative flex items-center justify-center">
       {/* Background Section */}
       <div className="absolute inset-0 z-0">
         <div className="h-1/2 w-full bg-[#F9FAFB]"></div>
         <div className="h-1/2 w-full bg-[#4F46E5]"></div>
       </div>
       {/* Login Card */}
-      <div className="relative z-10 bg-white mb-10 rounded-[25px] shadow-2xl w-full max-w-sm 2xl:max-w-md p-8 pi:p-6 flex flex-col items-center">
-        <h1 className="text-Slate-gray font-semibold pi:text-[24px] 2xl:text-[32px] mb-2">
+      <div className="relative z-10 bg-white mb-20 rounded-[25px] shadow-2xl w-full max-w-sm 2xl:max-w-md p-8 pi:p-6 mx-5 flex flex-col items-center">
+        <h1 className="text-Slate-gray font-semibold pi:text-[24px] 2xl:text-[32px] text-[24px] mb-2">
           ลงชื่อเข้าใช้
         </h1>
         <form className="w-full flex flex-col mt-2" onSubmit={handleLogin}>
@@ -119,7 +121,7 @@ export default function Login() {
             <button
               type="button"
               onClick={() => router.push('/forgotpass')}
-              className="text-sm text-gray-500 hover:text-red-500 hover:underline transition-colors">
+              className="text-[14px] 2xl:text-[16px] text-gray-500 hover:text-red-500 hover:underline transition-colors">
               ลืมรหัสผ่าน?
             </button>
           </div>
