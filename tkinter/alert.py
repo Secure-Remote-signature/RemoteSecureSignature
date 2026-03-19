@@ -9,6 +9,10 @@ class IncomingAlert(tk.Toplevel):
         self.overrideredirect(True)
         self.attributes("-topmost", True)
         self.configure(bg="#FFFFFF")
+        
+        # Store callbacks
+        self.on_accept = on_accept
+        self.on_reject = on_reject
 
         # --- Header ---
         header = tk.Frame(self, bg="#5D5CDE", height=50)
@@ -40,14 +44,26 @@ class IncomingAlert(tk.Toplevel):
         view_link = tk.Label(content, text="คลิกเพื่อดูตัวอย่างเอกสาร", font=("Arial", 10, "underline"), 
                              bg="#FFFFFF", fg="#5D5CDE", cursor="hand2")
         view_link.pack(pady=10)
-        view_link.bind("<Button-1>", lambda e: [self.destroy(), on_accept()])
+        view_link.bind("<Button-1>", self._on_view_click)
 
         # --- Buttons ---
         btn_frame = tk.Frame(content, bg="#FFFFFF")
         btn_frame.pack(fill="x", pady=10)
         tk.Button(btn_frame, text="ลงนามเอกสาร", bg="#5D5CDE", fg="white", font=("Arial", 11, "bold"),
                   relief="flat", width=18, pady=8, cursor="hand2",
-                  command=lambda: [self.destroy(), on_accept()]).pack(side="left", expand=True, padx=5)
+                  command=self._on_accept_click).pack(side="left", expand=True, padx=5)
         tk.Button(btn_frame, text="ปฏิเสธ", bg="#E11D48", fg="white", font=("Arial", 11, "bold"),
                   relief="flat", width=18, pady=8, cursor="hand2",
-                  command=lambda: [self.destroy(), on_reject()]).pack(side="left", expand=True, padx=5)
+                  command=self._on_reject_click).pack(side="left", expand=True, padx=5)
+    
+    def _on_accept_click(self):
+        self.destroy()
+        self.on_accept()
+    
+    def _on_reject_click(self):
+        self.destroy()
+        self.on_reject()
+    
+    def _on_view_click(self, event):
+        self.destroy()
+        self.on_accept()
