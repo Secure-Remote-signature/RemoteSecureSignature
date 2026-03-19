@@ -18,7 +18,7 @@ const port = 5000;
 
 // 1. Middleware
 app.use(cors({
-    origin: "*", // อนุญาตทุกที่ (แต่ credentials จะใช้ไม่ได้ถ้าเป็น *)
+    origin: "*",
     methods: ["GET", "POST", "PUT", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"]
 }));
@@ -44,13 +44,23 @@ app.get("/srs", (req, res) => {
 // 4. Startup Logic
 async function startApp() {
     try {
-        console.log("🛠️  Setting up database...");
+        console.log("Setting up database...");
         await initializeDatabase();
-        app.listen(port, () => {
-            console.log(`🚀 Secure Remote Signature Backend running on port ${port}`);
+        const server = app.listen(port, () => {
+            console.log(`Secure Remote Signature Backend running on port ${port}`);
+        });
+
+        server.on("error", (error) => {
+            if (error && error.code === "EADDRINUSE") {
+                console.error(`Port ${port} is already in use. Backend is likely already running in another terminal.`);
+                console.error("Stop the old backend process first, then start again.");
+                return;
+            }
+            console.error("Server runtime error:", error);
+            process.exit(1);
         });
     } catch (error) {
-        console.error("❌ Failed to start server:", error);
+        console.error("Failed to start server:", error);
         process.exit(1);
     }
 }
