@@ -1,9 +1,8 @@
 import tkinter as tk
 from tkinter import messagebox
 import requests
-from PIL import Image, ImageTk, ImageOps, ImageDraw
+from PIL import Image, ImageTk, ImageDraw
 from io import BytesIO
-import json
 
 class SignaturePage(tk.Frame):
     def __init__(self, parent, controller):
@@ -17,11 +16,13 @@ class SignaturePage(tk.Frame):
     }
         
         # --- Data State ---
-        self.backend_url = "http://192.168.1.39:5000" # Update to your actual backend IP
+        self.backend_url = "http://localhost:5000"
         self.current_doc = None
+        self.current_request = None
         self.orig_img = None  
         self.paths = []       
         self.zoom_level = 1.0
+        self.signature_area = None
 
         self.setup_ui()
 
@@ -47,8 +48,8 @@ class SignaturePage(tk.Frame):
         tk.Button(zoom_frame, text="+", command=lambda: self.adjust_zoom(0.1), width=3).pack(side="left")
 
         # Confirm/Simulate Button
-        tk.Button(toolbar, text="START SIGNING (CNC)", font=("Arial", 10, "bold"), bg="#10B981", fg="#FFFFFF", 
-                  relief="flat", padx=20, command=lambda: self.controller.show_frame("PinConfirmPage")).pack(side="right", padx=15)
+        tk.Button(toolbar, text="PREVIEW + CONFIRM", font=("Arial", 10, "bold"), bg="#10B981", fg="#FFFFFF", 
+              relief="flat", padx=20, command=self.show_simulation).pack(side="right", padx=15)
 
         # --- Main Split Screen (Using PanedWindow) ---
         self.paned_window = tk.PanedWindow(self, orient=tk.HORIZONTAL, bg="#E5E7EB", sashwidth=6)
@@ -79,10 +80,49 @@ class SignaturePage(tk.Frame):
 
     # --- Logic Methods (Refactored from your original code) ---
     def fetch_doc(self):
-        # Implementation to get pending doc from Backend
-        # For now, showing a simple message to confirm it's connected
-        messagebox.showinfo("API", "Fetching latest request from backend...")
-        # (Paste your existing fetch_doc logic here and adjust self references)
+        if self.current_request:
+            self.load_doc_from_request(self.current_request)
+            return
+
+        if not getattr(self.controller, "current_user_id", None):
+            messagebox.showwarning("Warning", "ไม่พบข้อมูลผู้ใช้")
+            return
+
+        try:
+            url = f"{self.backend_url}/srs/request/pending/{self.controller.current_user_id}"
+            response = requests.get(url, timeout=5)
+            if response.status_code == 200 and response.json():
+                self.current_request = response.json()
+                self.load_doc_from_request(self.current_request)
+            else:
+                messagebox.showinfo("API", "ยังไม่มีคำร้องใหม่")
+        except Exception as e:
+            messagebox.showerror("Error", f"เชื่อมต่อ backend ไม่สำเร็จ: {e}")
+
+    def set_request_data(self, data):
+        self.current_request = data
+        self.load_doc_from_request(data)
+
+    def load_doc_from_request(self, data):
+        filename = data.get("requestPicture") or data.get("docFileName")
+        if not filename:
+            messagebox.showwarning("Warning", "ไม่พบชื่อไฟล์เอกสาร")
+            return
+
+        img_url = f"{self.backend_url}/uploads/{filename}"
+        try:
+            response = requests.get(img_url, timeout=10)
+            if response.status_code != 200:
+                messagebox.showerror("Error", f"โหลดเอกสารไม่สำเร็จ (HTTP {response.status_code})")
+                return
+
+            raw_img = Image.open(BytesIO(response.content))
+            self.orig_img = raw_img.transpose(Image.ROTATE_90)
+            self.signature_area = data.get("signatureArea") or {"x": 200, "y": 1200, "width": 400, "height": 200}
+            self.zoom_level = 1.0
+            self.render_left_canvas()
+        except Exception as e:
+            messagebox.showerror("Error", f"โหลดเอกสารไม่สำเร็จ: {e}")
 
     def render_left_canvas(self):
         if not self.orig_img: return
@@ -94,6 +134,13 @@ class SignaturePage(tk.Frame):
         self.left_canvas.delete("all")
         self.left_canvas.create_image(0, 0, image=self.tk_left_img, anchor=tk.NW)
         self.left_canvas.config(scrollregion=(0, 0, new_size[0], new_size[1]))
+        if self.signature_area:
+            x = self.signature_area["x"] * self.zoom_level
+            y = self.signature_area["y"] * self.zoom_level
+            sw = self.signature_area["width"] * self.zoom_level
+            sh = self.signature_area["height"] * self.zoom_level
+            self.left_canvas.create_rectangle(x, y, x + sw, y + sh, outline="#EF4444", width=3, dash=(6, 4))
+            self.left_canvas.create_text(x, y - 10, text="ตำแหน่งลายเซ็น", fill="#EF4444", anchor="sw")
         self.zoom_lbl.config(text=f"{int(self.zoom_level * 100)}%")
 
     def adjust_zoom(self, delta):
@@ -114,8 +161,74 @@ class SignaturePage(tk.Frame):
         self.paths = []
 
     def show_simulation(self):
-        # Logic to map coordinates and show preview window before CNC
-        if not self.paths:
-            messagebox.showwarning("Warning", "Please provide a signature first.")
+        if not self.current_request or not self.orig_img:
+            messagebox.showwarning("Warning", "กรุณาโหลดเอกสารก่อน")
             return
-        messagebox.showinfo("Simulation", "Calculating CNC paths and showing preview...")
+
+        if not self.paths:
+            messagebox.showwarning("Warning", "กรุณาเซ็นชื่อก่อน")
+            return
+
+        mapped_points = self.calculate_mapped_points()
+        sim_img = self.orig_img.copy()
+        draw = ImageDraw.Draw(sim_img)
+        for path in mapped_points:
+            mapped = [(pt["x"], pt["y"]) for pt in path]
+            if len(mapped) > 1:
+                draw.line(mapped, fill="blue", width=5)
+
+        self.display_preview(sim_img, mapped_points)
+
+    def calculate_mapped_points(self):
+        area = self.signature_area or {"x": 200, "y": 1200, "width": 400, "height": 200}
+        all_pts = [pt for path in self.paths for pt in path]
+        min_x, max_x = min(p[0] for p in all_pts), max(p[0] for p in all_pts)
+        min_y, max_y = min(p[1] for p in all_pts), max(p[1] for p in all_pts)
+
+        sig_w = max(max_x - min_x, 1)
+        sig_h = max(max_y - min_y, 1)
+        scale = min(area["width"] / sig_w, area["height"] / sig_h) * 0.8
+
+        target_cx = area["x"] + (area["width"] / 2)
+        target_cy = area["y"] + (area["height"] / 2)
+        sig_cx = (min_x + max_x) / 2
+        sig_cy = (min_y + max_y) / 2
+
+        mapped_paths = []
+        for path in self.paths:
+            mapped_path = []
+            for px, py in path:
+                mx = target_cx + (px - sig_cx) * scale
+                my = target_cy + (py - sig_cy) * scale
+                mapped_path.append({"x": round(mx, 2), "y": round(my, 2)})
+            if len(mapped_path) > 1:
+                mapped_paths.append(mapped_path)
+        return mapped_paths
+
+    def display_preview(self, sim_img, mapped_points):
+        sim_win = tk.Toplevel(self)
+        sim_win.title("Preview ก่อนยืนยัน PIN")
+        sim_win.geometry("700x500")
+
+        canvas = tk.Canvas(sim_win, bg="#111827")
+        canvas.pack(fill="both", expand=True)
+
+        preview_copy = sim_img.copy()
+        preview_copy.thumbnail((680, 420))
+        self.tk_preview = ImageTk.PhotoImage(preview_copy)
+        canvas.create_image(340, 210, image=self.tk_preview)
+
+        button_row = tk.Frame(sim_win, bg="#111827")
+        button_row.pack(fill="x", pady=10)
+        tk.Button(button_row, text="ยกเลิก", bg="#475569", fg="white", padx=16,
+                  command=sim_win.destroy).pack(side="left", padx=20)
+        tk.Button(button_row, text="ยืนยันตำแหน่ง + ใส่ PIN", bg="#10B981", fg="white", padx=16,
+                  command=lambda: self.confirm_preview(sim_win, mapped_points)).pack(side="right", padx=20)
+
+    def confirm_preview(self, sim_win, mapped_points):
+        sim_win.destroy()
+        payload = {
+            "request": self.current_request,
+            "points_px": mapped_points
+        }
+        self.controller.show_frame("PinConfirmPage", data=payload)
