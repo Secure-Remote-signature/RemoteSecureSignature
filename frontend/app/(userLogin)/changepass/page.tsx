@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Loader2, Lock, CheckCircle2 } from 'lucide-react';
-import axios from 'axios';
+import api, { isAxiosError } from '@/app/lib/api';
 import "@/app/styles/components.css";
 
 export default function ChangePass() {
@@ -52,7 +52,7 @@ export default function ChangePass() {
 
     setIsLoading(true);
     try {
-      await axios.put(`${process.env.NEXT_PUBLIC_API_URL}/srs/user/change-password/${userId}`, {
+      await api.put(`${process.env.NEXT_PUBLIC_API_URL}/srs/user/change-password/${userId}`, {
         oldPassword,
         newPassword,
       });
@@ -62,7 +62,7 @@ export default function ChangePass() {
       setNewPassword('');
       setConfirmPassword('');
     } catch (error: unknown) {
-      if (axios.isAxiosError(error) && error.response) {
+      if (isAxiosError(error) && error.response) {
         setErrorMsg(error.response.data?.error || 'เปลี่ยนรหัสผ่านไม่สำเร็จ');
       } else {
         setErrorMsg('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้');

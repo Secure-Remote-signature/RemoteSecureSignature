@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import "@/app/styles/globals.css";
 import MainNavbar from "../components/MainNavbar";
 import Slidebar from "../components/Slidebar";
@@ -10,7 +11,37 @@ export default function MainLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const router = useRouter();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+
+  useEffect(() => {
+    const session = sessionStorage.getItem("user_session");
+    if (!session) {
+      router.replace("/login");
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(session);
+      if (!parsed?.id) {
+        throw new Error("invalid session");
+      }
+      setIsCheckingAuth(false);
+    } catch {
+      sessionStorage.removeItem("token");
+      sessionStorage.removeItem("user_session");
+      router.replace("/login");
+    }
+  }, [router]);
+
+  if (isCheckingAuth) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-[#F9FAFB] text-gray-500">
+        กำลังตรวจสอบสิทธิ์...
+      </div>
+    );
+  }
   
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-[#F9FAFB]">

@@ -2,7 +2,7 @@
 import "@/app/styles/components.css";
 import { useRouter } from 'next/navigation';
 import axios from "axios";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export default function Login() {
   const router = useRouter();
@@ -38,6 +38,14 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
+  useEffect(() => {
+    const notice = sessionStorage.getItem('auth_notice');
+    if (notice) {
+      setErrorMsg(notice);
+      sessionStorage.removeItem('auth_notice');
+    }
+  }, []);
+
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => { 
     e.preventDefault();
     setIsLoading(true);
@@ -72,7 +80,7 @@ export default function Login() {
       console.error("เกิดข้อผิดพลาดในการเข้าสู่ระบบ", error);
       
       if(axios.isAxiosError(error) && error.response) {
-        setErrorMsg(error.response.data?.detail || error.response.data?.message || "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง");
+        setErrorMsg(error.response.data?.detail || error.response.data?.message || error.response.data?.error || "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง");
       } else {
         setErrorMsg("เกิดข้อผิดพลาดในการเชื่อมต่อกับเซิร์ฟเวอร์");
       }

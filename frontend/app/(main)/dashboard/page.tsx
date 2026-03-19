@@ -1,10 +1,10 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { Loader2, CheckCircle2, MessageSquareX, ArrowLeft } from 'lucide-react'; 
+import { Loader2, CheckCircle2 } from 'lucide-react'; 
 import "@/app/styles/components.css";
 import { useRouter } from 'next/navigation';
-import axios from 'axios';
+import api from '@/app/lib/api';
 
 export default function Dashboard() {
     const router = useRouter();
@@ -26,7 +26,7 @@ export default function Dashboard() {
     useEffect(() => {
         const checkStatus = async () => {
             try {
-            const response = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/srs/machine/status`);
+            const response = await api.get(`${process.env.NEXT_PUBLIC_API_URL}/srs/machine/status`);
             if (response.data.status) {
                 setMachineStatus(response.data.status);
             }

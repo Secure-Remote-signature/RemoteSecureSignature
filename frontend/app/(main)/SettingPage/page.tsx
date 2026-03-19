@@ -1,10 +1,10 @@
 "use client";
 
 import React, { useEffect, useState} from 'react';
-import { User, Save, Lock } from 'lucide-react';
+import { User, Save } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import "@/app/styles/components.css";
-import axios from 'axios';
+import api, { isAxiosError } from '@/app/lib/api';
 
 interface Profile {
   userName: string;
@@ -26,11 +26,6 @@ export default function SettingsPage() {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
-
-  const [oldPassword, setOldPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [passSaving, setPassSaving] = useState(false);
 
   useEffect(() => {
     const rawSession = sessionStorage.getItem('user_session');
@@ -55,14 +50,14 @@ export default function SettingsPage() {
 
     const fetchProfile = async () => {
       try {
-        const res = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/srs/user/profile/${userId}`);
+        const res = await api.get(`${process.env.NEXT_PUBLIC_API_URL}/srs/user/profile/${userId}`);
         const data = res.data as Profile;
         setProfile(data);
         setFirstName(data.userName || '');
         setLastName(data.userLastname || '');
         setPhone(data.userPhone || '');
       } catch (error: unknown) {
-        if (axios.isAxiosError(error) && error.response) {
+        if (isAxiosError(error) && error.response) {
           setErrorMsg(error.response.data?.error || 'โหลดข้อมูลผู้ใช้ไม่สำเร็จ');
         } else {
           setErrorMsg('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้');
@@ -81,7 +76,7 @@ export default function SettingsPage() {
     setSaving(true);
 
     try {
-      await axios.put(`${process.env.NEXT_PUBLIC_API_URL}/srs/user/updateuser/${userId}`, {
+      await api.put(`${process.env.NEXT_PUBLIC_API_URL}/srs/user/updateuser/${userId}`, {
         userName: firstName,
         userLastname: lastName,
         userPhone: phone,
@@ -109,7 +104,7 @@ export default function SettingsPage() {
 
       alert('บันทึกข้อมูลสำเร็จ');
     } catch (error: unknown) {
-      if (axios.isAxiosError(error) && error.response) {
+      if (isAxiosError(error) && error.response) {
         setErrorMsg(error.response.data?.error || 'บันทึกข้อมูลไม่สำเร็จ');
       } else {
         setErrorMsg('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้');
@@ -190,7 +185,6 @@ export default function SettingsPage() {
               <div className="flex gap-2>">
                 <button 
                   onClick={() => router.push('/changepass')}
-                  disabled={passSaving}
                   className="flex items-center gap-2 bg-[#4F46E5] hover:bg-indigo-700 text-white 2xl:px-6 2xl:py-3 pi:py-2 pi:px-4 rounded-xl font-bold pi:text-xl shadow-md transition-all active:scale-95"
                 >
                   เปลี่ยนรหัสผ่าน

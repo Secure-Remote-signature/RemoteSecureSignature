@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import Cropper, { Area } from 'react-easy-crop';
 import "@/app/styles/components.css";
-import axios from 'axios';
+import api from '@/app/lib/api';
 
 interface Professor {
     userId: string;
@@ -61,7 +61,7 @@ export default function RequestDocumentPage() {
 
         const fetchProfessors = async () => {
             try {
-                const res = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/srs/user/staff`);
+                const res = await api.get(`${process.env.NEXT_PUBLIC_API_URL}/srs/user/staff`);
                 setProfessors(res.data);
             } catch (err) {
                 console.error("ดึงรายชื่ออาจารย์ไม่สำเร็จ", err);
@@ -117,7 +117,7 @@ export default function RequestDocumentPage() {
 
         try {
             // ใช้ axios และดึง URL จาก .env
-            const response = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/srs/request/submit`, payload);
+            const response = await api.post(`${process.env.NEXT_PUBLIC_API_URL}/srs/request/submit`, payload);
             
             if(response.status === 200) {
                 setIsSubmitted(true);

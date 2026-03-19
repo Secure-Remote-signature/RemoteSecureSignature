@@ -1,7 +1,7 @@
 "use client";
 import "@/app/styles/components.css";
 import { Menu} from 'lucide-react';
-import axios from 'axios';
+import api from '@/app/lib/api';
 import React, { useState, useEffect } from 'react';
 
 interface NavbarProps {
@@ -10,7 +10,7 @@ interface NavbarProps {
   userLastname: string;
 }
 
-export default function Navbar({ onMenuClick, userName, userLastName }: { onMenuClick?: () => void; userName: string; userLastName: string }) {
+export default function Navbar({ onMenuClick }: { onMenuClick?: () => void }) {
   const [userProfile, setUserProfile] = useState<NavbarProps | null>(null);
   
   useEffect(() => {
@@ -22,7 +22,7 @@ export default function Navbar({ onMenuClick, userName, userLastName }: { onMenu
         const session = JSON.parse(savedData);
         const userId = session.id;
         const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/srs/user/profile/${userId}`;
-        const response = await axios.get(apiUrl);
+        const response = await api.get(apiUrl);
         // console.log()
         setUserProfile(response.data);
       } catch (error) {

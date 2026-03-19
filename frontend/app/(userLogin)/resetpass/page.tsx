@@ -4,7 +4,7 @@ import React, { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Loader2, CheckCircle2 } from 'lucide-react';
 import "@/app/styles/components.css";
-import axios from 'axios';
+import api, { isAxiosError } from '@/app/lib/api';
 
 // --- 1. สร้าง Component ไส้ใน (เพื่อใช้ useSearchParams) ---
 function ResetPassContent() {
@@ -45,7 +45,7 @@ function ResetPassContent() {
     setIsLoading(true);
 
     try {
-      await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/srs/user/verify-otp`, {
+      await api.post(`${process.env.NEXT_PUBLIC_API_URL}/srs/user/verify-otp`, {
         email,
         otp,
         newPassword: password,
@@ -53,7 +53,7 @@ function ResetPassContent() {
 
       setIsSuccess(true);
     } catch (error: unknown) {
-      if (axios.isAxiosError(error) && error.response) {
+      if (isAxiosError(error) && error.response) {
         setErrorMsg(error.response.data?.error || 'ยืนยัน OTP ไม่สำเร็จ');
       } else {
         setErrorMsg('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้');

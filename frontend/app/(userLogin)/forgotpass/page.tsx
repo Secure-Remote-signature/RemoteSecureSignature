@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { ArrowLeft, Loader2, CheckCircle2 } from 'lucide-react';
 import "@/app/styles/components.css";
 import { useRouter } from 'next/navigation';
-import axios from 'axios';
+import api, { isAxiosError } from '@/app/lib/api';
 
 export default function ForgotPass() {
   const router = useRouter();
@@ -19,13 +19,13 @@ export default function ForgotPass() {
     setIsLoading(true);
 
     try {
-      await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/srs/user/request-otp`, {
+      await api.post(`${process.env.NEXT_PUBLIC_API_URL}/srs/user/request-otp`, {
         email,
       });
 
       setIsSuccess(true);
     } catch (error: unknown) {
-      if (axios.isAxiosError(error) && error.response) {
+      if (isAxiosError(error) && error.response) {
         setErrorMsg(error.response.data?.error || "ส่ง OTP ไม่สำเร็จ");
       } else {
         setErrorMsg("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้");

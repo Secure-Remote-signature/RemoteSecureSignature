@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import axios from 'axios';
+import api, { isAxiosError } from '@/app/lib/api';
 import "@/app/styles/components.css";
 
 interface Faculty {
@@ -29,7 +29,7 @@ export default function Register() {
   useEffect(() => {
     const fetchFaculties = async () => {
       try {
-        const res = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/srs/user/faculties`);
+        const res = await api.get(`${process.env.NEXT_PUBLIC_API_URL}/srs/user/faculties`);
         setFacultyList(res.data);
       } catch (err) {
         console.error("โหลดคณะไม่สำเร็จ:", err);
@@ -46,10 +46,6 @@ export default function Register() {
     }));
   };
 
-  const handleNext = () => {
-    if (step < 3) setStep(step + 1);
-  };
-
   const handleSubmit = async () => {
   if (step < 3) {
     setStep(step + 1);
@@ -61,7 +57,7 @@ export default function Register() {
   }
   try {
     const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/srs/user/createuser`;
-    const response = await axios.post(apiUrl, {
+    const response = await api.post(apiUrl, {
       userName: formData.firstName,
       userLastname: formData.lastName,
       userEmail: formData.email,
@@ -79,7 +75,11 @@ export default function Register() {
     }
   } catch (error: unknown) {
     console.error("Register Error:", error);
-    alert((error as { response?: { data?: { error?: string } } }).response?.data?.error || "เกิดข้อผิดพลาดในการลงทะเบียน");
+    if (isAxiosError(error) && error.response) {
+      alert(error.response.data?.error || "เกิดข้อผิดพลาดในการลงทะเบียน");
+    } else {
+      alert("เกิดข้อผิดพลาดในการลงทะเบียน");
+    }
   }
 };
   const inputStyle = `
