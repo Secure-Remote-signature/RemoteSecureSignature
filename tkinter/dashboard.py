@@ -11,6 +11,8 @@ class DashboardPage(tk.Frame):
         self.prof_id = None
         
         self.last_notified_id = None  # To track the last notified request ID for polling
+        self.polling_id = None  # เก็บ ID ของ after() polling task
+        self.skip_initial_pending = True  # ไม่เด้ง alert ทันทีเมื่อเพิ่งเข้าหน้า Dashboard
         
         # --- Top Navigation Bar ---
         top_bar = tk.Frame(self, bg="#FFFFFF", height=60, bd=0, highlightthickness=1, highlightbackground="#E5E7EB")
@@ -55,10 +57,13 @@ class DashboardPage(tk.Frame):
                   bg="#F9FAFB", fg="#4F46E5", bd=0, cursor="hand2",
                   command=lambda: controller.show_frame("HistoryPage")).pack(side="bottom", pady=30)
 
-        self.poll_for_requests()  # Start polling for new requests
+        # เริ่ม polling หลังล็อกอินสำเร็จใน update_user_info เท่านั้น
         
     def update_user_info(self):
+        # รีเซ็ตสถานะทุกครั้งเมื่อเข้าหน้า Dashboard ใหม่
+        self.stop_polling()
         self.last_notified_id = None
+        self.skip_initial_pending = True
         
         if hasattr(self.controller, 'current_user_id'):
             self.prof_id = self.controller.current_user_id
@@ -66,10 +71,13 @@ class DashboardPage(tk.Frame):
 
         if hasattr(self.controller, 'current_user'):
             self.user_lbl.config(text=f"Welcome, {self.controller.current_user}")
+        
+        # เมื่อกลับมา dashboard ให้เริ่ม polling ใหม่
+        self.poll_for_requests()
   
     def poll_for_requests(self):
         if self.prof_id is None:
-            self.after(3000, self.poll_for_requests)
+            self.polling_id = self.after(3000, self.poll_for_requests)
             return
 
         try:
@@ -80,30 +88,43 @@ class DashboardPage(tk.Frame):
                 data = response.json()
                 
                 if data and "requestId" in data:
-                    print(f"✅ เจอคำร้องจากคุณ: {data.get('studentName')}")
-                    
-                    self.trigger_alert(data) 
-                    return 
+                    request_id = data.get('requestId')
+
+                    # ครั้งแรกหลังเข้า Dashboard: จำคำร้องล่าสุดไว้ก่อน ไม่แจ้งเตือนทันที
+                    if self.skip_initial_pending:
+                        self.last_notified_id = request_id
+                        self.skip_initial_pending = False
+                        print(f"📝 พบคำร้องค้างระบบ requestId={request_id} (ยังไม่เด้ง alert รอบแรก)")
+                    elif request_id != self.last_notified_id:
+                        print(f"✅ เจอคำร้องใหม่จากคุณ: {data.get('studentName')} (requestId={request_id})")
+                        self.last_notified_id = request_id
+                        self.trigger_alert(data)
+                    else:
+                        print(f"😴 requestId={request_id} ยังเป็นคำร้องเดิม")
                 else:
                     print(f"😴 ID {self.prof_id}: ยังไม่มีคำร้องใหม่...")
                     
         except Exception as e:
             print(f"❌ Connection Error: {e}")
 
-        self.after(3000, self.poll_for_requests)
+        self.polling_id = self.after(3000, self.poll_for_requests)
+    
+    def stop_polling(self):
+        """หยุด polling เมื่อออกจาก dashboard"""
+        if self.polling_id:
+            self.after_cancel(self.polling_id)
+            self.polling_id = None
+            print("⏹️ Polling stopped")
 
     def trigger_alert(self, data):
         from alert import IncomingAlert
         self.last_notified_id = data.get('requestId') 
-
         alert = IncomingAlert(
             self, 
             data=data, 
-            on_accept=lambda: self.accept_action(data),
+            on_accept=lambda: self.controller.show_frame("SignaturePage", data=data),
             on_reject=lambda: self.handle_reject(data)
-        )
-        self.wait_window(alert) 
-        self.poll_for_requests() 
+        ) 
 
     def accept_action(self, data):
         self.controller.show_frame("ExecutionPage", data=data)
