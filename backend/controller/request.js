@@ -11,7 +11,7 @@ const uploadDir = path.join(__dirname, '../uploads');
 // backend/controller/request.js
 
 const submitRequest = async (req, res) => {
-    const { docId, subject, documentImage, ownerId, clientId, message, rtsp } = req.body;
+    const { docId, subject, documentImage, ownerId, clientId, message, rtsp, camera, signatureArea } = req.body;
 
     const fileName = `${docId}.png`;
     const filePath = path.join(uploadDir, fileName);
@@ -29,22 +29,23 @@ const submitRequest = async (req, res) => {
                 INSERT INTO requestSign (
                     requestNumber, requestDate, requestMessage, 
                     requestRTSP, requestPicture, ownerRequestID, 
-                    clientRequestID, requestStatus
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    clientRequestID, requestStatus, signatureArea
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             `;
 
             const params = [
                 docId,
                 new Date().toISOString(),
                 message || subject,
-                rtsp || "none",
+                rtsp || camera || "none",
                 fileName,
                 ownerId,
                 clientId,
-                'Pending'
+                'Pending',
+                JSON.stringify(signatureArea || null)
             ];
 
-            console.log("📊 จำนวนคอลัมน์: 8 | จำนวน Params:", params.length); // ต้องได้ 8 เท่ากัน
+            console.log("📊 จำนวนคอลัมน์: 9 | จำนวน Params:", params.length); // ต้องได้ 9 เท่ากัน
 
             await db.run(sql, params);
             await db.close();
@@ -61,13 +62,13 @@ const getPendingForProfessor = async (req, res) => {
         const { profId } = req.params;
         const db = await open({ filename: "./database/remote.db", driver: sqlite3.Database });
         const request = await db.get(
-            "SELECT r.*, u.userName as studentName FROM requestSign r JOIN users u ON r.clientRequestID = u.userId WHERE r.ownerRequestID = ? AND r.requestStatus = 'Pending' ORDER BY r.requestDate ASC LIMIT 1",
+            "SELECT r.*, u.userName as studentName FROM requestSign r JOIN users u ON r.clientRequestID = u.userId WHERE r.ownerRequestID = ? AND r.requestStatus = 'Pending' ORDER BY r.requestId DESC LIMIT 1",
             [profId]
         );
         await db.close();
         res.json(request || null);
     } catch (error) {
-        console.error("❌ Error in getPendingForProfessor:", error);
+        console.error("Error in getPendingForProfessor:", error);
         res.status(500).json({ error: "Server error" });
     }
 };
@@ -107,7 +108,7 @@ const confirmSignature = async (req, res) => {
         await db.run(sql, [JSON.stringify(points_px), requestId]);
         await db.close();
 
-        console.log(`✅ Request ${requestId} has been signed and saved.`);
+        console.log(`Request ${requestId} has been signed and saved.`);
         res.status(200).json({ message: "Signature confirmed and saved to DB" });
     } catch (error) {
         console.error(error);
@@ -123,7 +124,7 @@ const getPendingRequest = async (req, res) => {
         const sql = `
             SELECT * FROM requestSign 
             WHERE ownerRequestID = ? AND requestStatus = 'Pending' 
-            ORDER BY requestId ASC LIMIT 1
+            ORDER BY requestId DESC LIMIT 1
         `;
         
         const request = await db.get(sql, [profId]);
