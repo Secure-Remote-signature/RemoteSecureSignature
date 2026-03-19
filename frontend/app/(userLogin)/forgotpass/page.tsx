@@ -81,7 +81,7 @@ export default function ForgotPass() {
               ลืมรหัสผ่าน
             </h1>
             <p className="text-gray-500 text-sm pi:text-xs 2xl:text-base mb-4 text-center">
-              กรอกอีเมลของคุณเพื่อรับลิงก์กู้คืนรหัสผ่าน
+              กรอกอีเมลของคุณเพื่อรับ OTP สำหรับกู้คืนรหัสผ่าน
             </p>
 
             <div className="w-full flex flex-col">
@@ -101,7 +101,7 @@ export default function ForgotPass() {
               disabled={isLoading || !email}
               className={primaryBtnStyle}
             >
-              {isLoading ? <Loader2 className="animate-spin h-5 w-5 2xl:h-6 2xl:w-6" /> : 'ส่งลิงก์กู้คืนรหัสผ่าน'}
+              {isLoading ? <Loader2 className="animate-spin h-5 w-5 2xl:h-6 2xl:w-6" /> : 'ส่ง OTP สำหรับกู้คืนรหัสผ่าน'}
             </button>
 
             {errorMsg && (
