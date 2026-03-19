@@ -46,9 +46,17 @@ async function initializeDatabase() {
          ownerRequestID INTEGER NOT NULL,
          clientRequestID INTEGER NOT NULL,
          requestStatus TEXT DEFAULT 'Pending',
+         signatureArea TEXT,
          signatureCoordinates TEXT
        );
      `);
+
+    const requestSignColumns = await db.all("PRAGMA table_info(requestSign)");
+    const hasSignatureArea = requestSignColumns.some((col) => col.name === "signatureArea");
+    if (!hasSignatureArea) {
+      await db.exec("ALTER TABLE requestSign ADD COLUMN signatureArea TEXT");
+      console.log("Added missing column: requestSign.signatureArea");
+    }
 
     const facultyCheck = await db.get("SELECT COUNT(*) as count FROM faculties");
     if (facultyCheck.count === 0) {
