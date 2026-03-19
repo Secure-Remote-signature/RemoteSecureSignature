@@ -1,28 +1,40 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Mail, ArrowLeft, Loader2, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Loader2, CheckCircle2 } from 'lucide-react';
 import "@/app/styles/components.css";
 import { useRouter } from 'next/navigation';
+import axios from 'axios';
 
 export default function ForgotPass() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMsg('');
     setIsLoading(true);
 
-    // จำลองการส่งข้อมูลไป API (รอ 1.5 วินาที)
-    setTimeout(() => {
-      setIsLoading(false);
-      setIsSuccess(true);
-    }, 1500);
-  };
+    try {
+      await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/srs/user/request-otp`, {
+        email,
+      });
 
-  // สไตล์ของ Input เดิมของคุณ
+      setIsSuccess(true);
+    } catch (error: unknown) {
+      if (axios.isAxiosError(error) && error.response) {
+        setErrorMsg(error.response.data?.error || "ส่ง OTP ไม่สำเร็จ");
+      } else {
+        setErrorMsg("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้");
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+ 
   const inputStyle = `
     w-full
     text-Slate-gray 
@@ -38,7 +50,6 @@ export default function ForgotPass() {
     transition-all
   `;
 
-  // สไตล์ของปุ่มหลักเดิมของคุณ
   const primaryBtnStyle = `
     bg-[#4338CA] 
     mt-2
@@ -64,7 +75,6 @@ export default function ForgotPass() {
       {/* Card Section */}
       <div className="relative z-10 bg-white mb-10 rounded-[25px] shadow-2xl w-full max-w-sm 2xl:max-w-md p-8 pi:p-6 flex flex-col items-center">
         
-        {/* เช็คสถานะ: ถ้ายังไม่สำเร็จ ให้โชว์ฟอร์มกรอกอีเมล */}
         {!isSuccess ? (
           <form onSubmit={handleSubmit} className="w-full flex flex-col items-center">
             <h1 className="text-Slate-gray font-semibold pi:text-[24px] 2xl:text-[32px] mb-1">
@@ -86,13 +96,17 @@ export default function ForgotPass() {
             </div>
 
             {/* ปุ่มส่งอีเมล */}
-            <button onClick={() => router.push('/resetpass')}
+            <button
               type="submit"
               disabled={isLoading || !email}
               className={primaryBtnStyle}
             >
               {isLoading ? <Loader2 className="animate-spin h-5 w-5 2xl:h-6 2xl:w-6" /> : 'ส่งลิงก์กู้คืนรหัสผ่าน'}
             </button>
+
+            {errorMsg && (
+              <p className="mt-3 text-sm text-red-500">{errorMsg}</p>
+            )}
 
             {/* ปุ่มกลับไปหน้า Login */}
             <button
@@ -121,10 +135,10 @@ export default function ForgotPass() {
             </p>
 
             <button 
-              onClick={() => router.push('/login')} 
+              onClick={() => router.push(`/resetpass?email=${encodeURIComponent(email)}`)} 
               className={primaryBtnStyle}
             >
-              กลับไปหน้าเข้าสู่ระบบ
+              ไปตั้งรหัสผ่านใหม่
             </button>
           </div>
         )}
