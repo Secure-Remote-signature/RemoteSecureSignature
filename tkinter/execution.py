@@ -8,40 +8,49 @@ class ExecutionPage(tk.Frame):
     def __init__(self, parent, controller):
         super().__init__(parent, bg="#111827")
         self.controller = controller
+        self.zoom_scale = 1.0
+        self.tk_img = None
         self.paths = []  
         self.current_path = []   
         self.orig_img = None
         self.current_request = {} 
+        self.sim_win = None  # เก็บ reference ของ preview window
+        self.signature_points = []
+        self.sign_command_sent = False
 
         self.setup_ui()
         self.setup_canvas_events()
+
     def setup_ui(self):
         # --- 1. Top Status Bar ---
         top_bar = tk.Frame(self, bg="#1E293B", height=60)
         top_bar.pack(side="top", fill="x")
         
         self.status_lbl = tk.Label(top_bar, text="● SYSTEM READY...", font=("Arial", 14, "bold"), 
-                                   bg="#1E293B", fg="#10B981")
+        bg="#1E293B", fg="#10B981")
         self.status_lbl.pack(side="left", padx=20, pady=15)
 
-        # --- 2. Info Label ---
-        self.info_label = tk.Label(self, text="รอรับข้อมูลเอกสาร...", font=("Arial", 12), bg="#111827", fg="white")
-        self.info_label.pack(pady=10)
+        tk.Button(top_bar, text="← กลับหน้าหลัก", bg="#334155", fg="white", relief="flat",
+              command=lambda: self.controller.show_frame("DashboardPage")).pack(side="right", padx=16)
 
-        # --- 3. Main Content: Canvas View ---
-        self.camera_view = tk.Canvas(self, bg="#0F172A", highlightthickness=1, highlightbackground="#334155", width=900, height=450)
-        self.camera_view.pack(fill="both", expand=True, padx=40, pady=10)
-        self.show_placeholder()
+        # --- 2. Main Layout (แบ่งซ้าย-ขวา) ---
+        main_container = tk.Frame(self, bg="#111827")
+        main_container.pack(fill="both", expand=True, padx=20, pady=10)
 
-        # --- 4. control buttons ---
+        # --- ฝั่งขวา: CNC Monitor ---
+        sig_frame = tk.LabelFrame(main_container, text=" กล้องเฝ้าหน้างาน CNC ", bg="#111827", fg="white")
+        sig_frame.pack(side="full", fill="both", padx=10)
+
+        self.camera_view = tk.Canvas(sig_frame, bg="#000000", width=400, height=450)
+        self.camera_view.pack(pady=10, padx=10)
+        self.show_camera_placeholder("รอเริ่มงานลงนาม")
+
+        tk.Button(sig_frame, text="REFRESH VIEW", bg="#64748B", fg="white", font=("Arial", 11),
+              command=self.refresh_camera_view).pack(fill="x", padx=10, pady=5)
+
+        # --- 3. Bottom Control Buttons ---
         btn_frame = tk.Frame(self, bg="#111827")
-        btn_frame.pack(pady=10)
-
-        tk.Button(btn_frame, text="ล้างลายเซ็น", bg="#64748B", fg="white", font=("Arial", 11),
-                  command=self.clear_canvas).pack(side="left", padx=10)
-
-        tk.Button(btn_frame, text="PREVIEW SIMULATION", bg="#3B82F6", fg="white", font=("Arial", 12, "bold"),
-                  padx=20, pady=10, command=self.show_simulation).pack(side="left", padx=10)
+        btn_frame.pack(side="top", pady=10)
 
         tk.Button(btn_frame, text="START CNC SIGNING", bg="#10B981", fg="white", font=("Arial", 12, "bold"),
                   padx=20, pady=10, command=self.start_signing).pack(side="left", padx=10)
@@ -49,8 +58,11 @@ class ExecutionPage(tk.Frame):
         tk.Button(btn_frame, text="CANCEL", bg="#EF4444", fg="white", font=("Arial", 12, "bold"), padx=20, pady=10,
                   command=lambda: self.controller.show_frame("DashboardPage")).pack(side="left", padx=10)
 
-        # --- 5. Progress Area ---
-        bottom_frame = tk.Frame(self, bg="#0F172A", height=100)
+        tk.Button(btn_frame, text="ปฏิเสธการลงนาม", bg="#EF4444", fg="white", font=("Arial", 12, "bold"),
+                  padx=20, pady=10, command=self.reject_this_request).pack(side="left", padx=10)
+
+        # --- 4. Progress Area ---
+        bottom_frame = tk.Frame(self, bg="#0F172A", height=60)
         bottom_frame.pack(side="bottom", fill="x", padx=40, pady=(0, 20))
         
         self.progress = ttk.Progressbar(bottom_frame, orient="horizontal", length=100, mode="determinate")
@@ -59,127 +71,146 @@ class ExecutionPage(tk.Frame):
         tk.Button(bottom_frame, text="EMERGENCY STOP", bg="#EF4444", fg="white", font=("Arial", 10, "bold"),
                   command=self.emergency_stop).pack(side="right", padx=10)
 
+    # --- ระบบภาพกล้อง (Execution Monitor) ---
     def setup_canvas_events(self):
-        self.camera_view.bind("<Button-1>", self.start_path)
-        self.camera_view.bind("<B1-Motion>", self.draw_path)
-        self.camera_view.bind("<ButtonRelease-1>", self.end_path)
+        return
 
-    def show_placeholder(self):
+    def show_camera_placeholder(self, text):
         self.camera_view.delete("all")
-        self.camera_view.create_text(450, 225, text="[ กรุณาเซ็นชื่อลงบนบริเวณนี้ ]", 
-                                     font=("Arial", 20, "bold"), fill="#475569")
+        self.camera_view.create_text(200, 200, text="CNC LIVE MONITOR", 
+                                     font=("Arial", 16, "bold"), fill="#94A3B8")
+        self.camera_view.create_text(200, 240, text=text, 
+                                     font=("Arial", 11), fill="#E2E8F0")
 
-    def start_path(self, event):
-        self.current_path = [(event.x, event.y)]
-        
-    def draw_path(self, event):
-        if self.current_path:
-            x1, y1 = self.current_path[-1]
-            x2, y2 = event.x, event.y
-            self.camera_view.create_line(x1, y1, x2, y2, fill="#60A5FA", width=3, tags="signature")
-            self.current_path.append((x2, y2))
+    def refresh_camera_view(self):
+        rtsp = self.current_request.get("requestRTSP") if self.current_request else None
+        if rtsp and rtsp != "none":
+            self.show_camera_placeholder(f"กำลังเฝ้าภาพจาก: {rtsp}")
+        else:
+            self.show_camera_placeholder("ไม่พบ RTSP - แสดงหน้าจอเฝ้าดูสถานะแทน")
 
-    def end_path(self, event):
-        if len(self.current_path) > 1:
-            self.paths.append(self.current_path)
-        self.current_path = []
-
-    def clear_canvas(self):
-        self.paths = []
-        self.camera_view.delete("signature")
-        if self.orig_img: self.show_image_on_canvas(self.orig_img)
-        else: self.show_placeholder()
-
-    def set_request_data(self, data):
-        self.current_request = data
-        self.info_label.config(text=f"กำลังดำเนินการ: {data.get('studentName', 'Unknown')}\nID: {data.get('requestNumber', '-')}")
-        if 'requestPicture' in data:
-            self.load_original_document(data['requestPicture'])
-
+    # --- ระบบจัดการเอกสาร (Document) ---
     def load_original_document(self, filename):
         img_url = f"http://localhost:5000/uploads/{filename}"
+        print(f"🔄 กำลังโหลดเอกสารจาก: {img_url}")
         try:
             response = requests.get(img_url, timeout=10)
+            print(f"Response Status: {response.status_code}")
             if response.status_code == 200:
-                self.orig_img = Image.open(BytesIO(response.content))
-                self.show_image_on_canvas(self.orig_img)
-                print(f"✅ Loaded: {filename}")
+                raw_img = Image.open(BytesIO(response.content))
+                self.orig_img = raw_img.transpose(Image.ROTATE_90)
+                # ให้ scheduler เรียก auto_fit_zoom หลังจาก canvas render เสร็จ
+                self.after(100, self.auto_fit_zoom)
+                print(f"✅ Loaded and Rotated Portrait: {filename}")
             else:
-                self.info_label.config(text="❌ โหลดรูปไม่สำเร็จ")
+                print(f"❌ ไฟล์ไม่พบ (Status {response.status_code})")
+                self.show_error_placeholder(f"ไฟล์ไม่พบ (HTTP {response.status_code})")
+        except requests.exceptions.Timeout:
+            print(f"❌ Timeout: เซิร์ฟเวอร์ไม่ตอบสนอง")
+            self.show_error_placeholder("Timeout: เซิร์ฟเวอร์ไม่ตอบสนอง")
         except Exception as e:
-            print(f"⚠️ Error: {e}")
+            print(f"❌ Error loading: {e}")
+            self.show_error_placeholder(f"Error: {str(e)[:50]}")
 
-    def show_image_on_canvas(self, img):
-        self.camera_view.delete("all")
-        cw, ch = 900, 450
-        img_copy = img.copy()
-        img_copy.thumbnail((cw, ch), Image.Resampling.LANCZOS)
-        self.tk_main_img = ImageTk.PhotoImage(img_copy)
-        self.camera_view.create_image(cw//2, ch//2, image=self.tk_main_img, anchor=tk.CENTER)
+    def show_error_placeholder(self, error_msg):
+        self.canvas.delete("all")
+        self.canvas.create_text(400, 300, text=error_msg, 
+                               font=("Arial", 14, "bold"), fill="#EF4444", tags="error_text")
 
-    def show_simulation(self):
-        if not self.orig_img or not self.paths:
-            messagebox.showwarning("คำเตือน", "กรุณาเซ็นชื่อก่อนดู Preview")
-            return
-            
-        sim_img = self.orig_img.copy()
-        draw = ImageDraw.Draw(sim_img)
-        
-        area = {"x": 500, "y": 800, "width": 400, "height": 200} 
-        
-        all_pts = [pt for path in self.paths for pt in path]
-        min_x, max_x = min(p[0] for p in all_pts), max(p[0] for p in all_pts)
-        min_y, max_y = min(p[1] for p in all_pts), max(p[1] for p in all_pts)
-        
-        sig_w, sig_h = max_x - min_x, max_y - min_y
-        scale = min(area['width']/sig_w, area['height']/sig_h) * 0.8
-        
-        target_cx, target_cy = area['x'] + area['width']/2, area['y'] + area['height']/2
-        sig_cx, sig_cy = (min_x + max_x)/2, (min_y + max_y)/2
+    def set_request_data(self, data):
+        if data and "request" in data:
+            self.current_request = data.get("request") or {}
+            self.signature_points = data.get("points_px") or []
+        else:
+            self.current_request = data or {}
+            self.signature_points = (data or {}).get("points_px") or []
 
-        for path in self.paths:
-            mapped = []
-            for px, py in path:
-                mx = target_cx + (px - sig_cx) * scale
-                my = target_cy + (py - sig_cy) * scale
-                mapped.append((mx, my))
-            if len(mapped) > 1:
-                draw.line(mapped, fill="blue", width=5)
-
-        self.display_preview(sim_img)
-
-    def display_preview(self, sim_img):
-        self.sim_win = tk.Toplevel(self)
-        self.sim_win.title("Preview")
-        self.sim_win.geometry("800x600")
-        
-        canvas = tk.Canvas(self.sim_win, bg="#111827")
-        canvas.pack(fill="both", expand=True)
-        
-        preview_copy = sim_img.copy()
-        preview_copy.thumbnail((780, 500))
-        self.tk_preview = ImageTk.PhotoImage(preview_copy)
-        canvas.create_image(400, 250, image=self.tk_preview)
-
-        tk.Button(self.sim_win, text="✅ ยืนยันพิกัดและส่งข้อมูล", bg="#10B981", fg="white",
-                  command=self.confirm_and_send_api).pack(pady=10)
-
-    def confirm_and_send_api(self):
-        payload = {
-            "requestId": self.current_request.get('requestId'),
-            "points_px": self.paths # ส่งเส้นที่ลากไป
-        }
-        try:
-            res = requests.post("http://localhost:5000/srs/request/confirm-signature", json=payload)
-            if res.status_code == 200:
-                messagebox.showinfo("สำเร็จ", "ลงนามเรียบร้อยแล้ว!")
+        self.sign_command_sent = False
+        print(f"Execution Page: ได้รับ data request - {self.current_request}")
+        filename = self.current_request.get('requestPicture') or self.current_request.get('docFileName', 'document.pdf')
+        print(f"ชื่อไฟล์หลัก: {filename}")
+        self.load_original_document(filename)
+        self.refresh_camera_view()
+        print(f"ExecutionPage loaded request: {self.current_request.get('requestId')}, Doc: {filename}")
+    
+    def cleanup_modals(self):
+        """ปิด modal windows ใด ๆ ที่ค้างอยู่"""
+        if self.sim_win:
+            try:
                 self.sim_win.destroy()
-                self.controller.show_frame("DashboardPage")
-        except:
-            messagebox.showerror("Error", "ส่งข้อมูลไม่สำเร็จ")
+                self.sim_win = None
+            except:
+                pass
+
+    def adjust_zoom(self, delta):
+        self.zoom_scale = max(0.2, min(1.0, self.zoom_scale + delta))  # ลิมิต 0.2 ถึง 1.0
+        self.render_image()
+
+    def reset_zoom(self):
+        self.zoom_scale = 0.5 
+        self.auto_fit_zoom()
+    
+    def auto_fit_zoom(self):
+        if not self.orig_img:
+            return
+        
+        canvas_width = self.canvas.winfo_width() - 20
+        canvas_height = self.canvas.winfo_height() - 20
+        print(f"DEBUG: canvas_width={canvas_width}, canvas_height={canvas_height}")
+        
+        # ถ้า canvas ยังไม่ render ให้ใช้ค่า default
+        if canvas_width <= 1 or canvas_height <= 1:
+            canvas_width = 760
+            canvas_height = 460
+            print(f"Using default canvas: {canvas_width}x{canvas_height}")
+        
+        img_width, img_height = self.orig_img.size
+        print(f"DEBUG: img_width={img_width}, img_height={img_height}")
+        
+        zoom_w = canvas_width / img_width
+        zoom_h = canvas_height / img_height
+        # ลิมิต zoom ให้สูงสุด 1.0 (100%)
+        self.zoom_scale = min(min(zoom_w, zoom_h) * 0.98, 1.0)
+        print(f"DEBUG: zoom_scale set to {self.zoom_scale} (limited to max 1.0)")
+        self.render_image()
+
+    def render_image(self):
+        if not self.orig_img: 
+            return
+        w, h = self.orig_img.size
+        new_size = (int(w * self.zoom_scale), int(h * self.zoom_scale))
+        resized_img = self.orig_img.resize(new_size, Image.Resampling.LANCZOS)
+        self.tk_img = ImageTk.PhotoImage(resized_img) 
+        self.canvas.delete("all")
+        # วาง image ที่มุมซ้ายบน
+        self.canvas.create_image(0, 0, anchor="nw", image=self.tk_img)
+        self.canvas.config(scrollregion=(0, 0, new_size[0], new_size[1]))
 
     def start_signing(self):
-        self.status_lbl.config(text="● EXECUTING...", fg="#F59E0B")
+        if not self.current_request:
+            messagebox.showwarning("Warning", "ไม่พบข้อมูลงานลงนาม")
+            return
+
+        if not self.signature_points:
+            messagebox.showwarning("Warning", "ไม่พบพิกัดลายเซ็น กรุณากลับไปยืนยันจากหน้า Preview")
+            return
+
+        if not self.sign_command_sent:
+            payload = {
+                "requestId": self.current_request.get('requestId'),
+                "points_px": self.signature_points
+            }
+            try:
+                res = requests.post("http://localhost:5000/srs/request/confirm-signature", json=payload, timeout=8)
+                if res.status_code != 200:
+                    messagebox.showerror("Error", f"ส่งคำสั่งลงนามไม่สำเร็จ (HTTP {res.status_code})")
+                    return
+                self.sign_command_sent = True
+            except Exception as e:
+                messagebox.showerror("Error", f"ส่งคำสั่งลงนามไม่สำเร็จ: {e}")
+                return
+
+        self.status_lbl.config(text="● EXECUTING CNC...", fg="#F59E0B")
         self.progress['value'] = 0
         self.run_progress()
 
@@ -190,7 +221,18 @@ class ExecutionPage(tk.Frame):
         else:
             self.status_lbl.config(text="● FINISHED", fg="#10B981")
             messagebox.showinfo("Success", "CNC Signing Completed!")
+            
+    def reject_this_request(self):
+        if messagebox.askyesno("ยืนยัน", "คุณต้องการปฏิเสธคำร้องนี้ใช่หรือไม่?"):
+            req_id = self.current_request.get('requestId')
+            url = f"http://localhost:5000/srs/request/update-status/{req_id}"
+            try:
+                requests.put(url, json={"status": "Rejected"})
+                self.controller.show_frame("DashboardPage")
+            except:
+                messagebox.showerror("Error", "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้")
 
     def emergency_stop(self):
         self.status_lbl.config(text="● HALTED", fg="#EF4444")
+        self.show_camera_placeholder("หยุดฉุกเฉินแล้ว - โปรดตรวจสอบเครื่อง CNC")
         messagebox.showwarning("Emergency", "CNC Machine Stopped!")
