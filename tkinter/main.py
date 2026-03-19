@@ -70,6 +70,11 @@ class MainApp(tk.Tk):
         if page_name in self.frames:
             frame = self.frames[page_name]
             
+            # Cleanup modals from any page that might have them
+            for fname in ["ExecutionPage"]:
+                if fname in self.frames and hasattr(self.frames[fname], "cleanup_modals"):
+                    self.frames[fname].cleanup_modals()
+            
             def update_user_info(self):
                 self.prof_id = self.controller.current_user_id
                 print(f"DEBUG: Dashboard updated for Prof ID: {self.prof_id}")
@@ -80,7 +85,7 @@ class MainApp(tk.Tk):
             if data is not None and hasattr(frame, "set_request_data"):
                 frame.set_request_data(data)
             
-            # Special logic: Update user info before showing Dashboard
+            # Special logic: Update user info before showing Dashboard (จะเรียก poll_for_requests ใหม่)
             if page_name == "DashboardPage" and hasattr(frame, "update_user_info"):
                 frame.update_user_info()
                 
