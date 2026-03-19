@@ -6,7 +6,7 @@ const router = express.Router();
 
 router.post("/submit", requestController.submitRequest);
 router.get("/pending/:profId", requestController.getPendingForProfessor);
-router.put("/update-status/:Id", requestController.updateStatus);
+router.put("/update-status/:id", requestController.updateStatus);
 router.post("/confirm-signature", requestController.confirmSignature);
 
 export default router;
