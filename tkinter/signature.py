@@ -1,8 +1,9 @@
 import tkinter as tk
 from tkinter import messagebox
 import requests
-from PIL import Image, ImageTk, ImageDraw
+from PIL import Image, ImageTk, ImageDraw, ImageOps
 from io import BytesIO
+import json
 
 class SignaturePage(tk.Frame):
     def __init__(self, parent, controller):
@@ -117,8 +118,17 @@ class SignaturePage(tk.Frame):
                 return
 
             raw_img = Image.open(BytesIO(response.content))
-            self.orig_img = raw_img.transpose(Image.ROTATE_90)
-            self.signature_area = data.get("signatureArea") or {"x": 200, "y": 1200, "width": 400, "height": 200}
+            self.orig_img = ImageOps.exif_transpose(raw_img)
+
+            # signatureArea อาจมาเป็น object หรือ JSON string จาก DB
+            raw_area = data.get("signatureArea")
+            if isinstance(raw_area, str):
+                try:
+                    raw_area = json.loads(raw_area)
+                except json.JSONDecodeError:
+                    raw_area = None
+
+            self.signature_area = raw_area or {"x": 200, "y": 1200, "width": 400, "height": 200}
             self.zoom_level = 1.0
             self.render_left_canvas()
         except Exception as e:
