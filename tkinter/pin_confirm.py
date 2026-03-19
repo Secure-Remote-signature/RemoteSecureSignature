@@ -8,6 +8,7 @@ class PinConfirmPage(tk.Frame):
         self.controller = controller
         self.pin_code = "" # Store entered digits
         self.correct_pin = "123456" # Mock PIN for testing
+        self.pending_payload = None
         
         # --- UI Setup ---
         # Center Container (The Card)
@@ -89,11 +90,16 @@ class PinConfirmPage(tk.Frame):
             # Success! Reset for next time and move to Execution Page
             self.pin_code = ""
             self.update_dots()
-            frame = self.controller.frames["ExecutionPage"]
-            frame.start_simulation()  # Call method to start the simulation
-            self.controller.show_frame("ExecutionPage")
+            if not self.pending_payload:
+                messagebox.showwarning("Warning", "ไม่พบข้อมูลงานลงนาม")
+                self.controller.show_frame("SignaturePage")
+                return
+            self.controller.show_frame("ExecutionPage", data=self.pending_payload)
         else:
             # Failed
             messagebox.showerror("Invalid PIN", "The PIN you entered is incorrect.")
             self.pin_code = ""
             self.update_dots()
+
+    def set_request_data(self, data):
+        self.pending_payload = data
