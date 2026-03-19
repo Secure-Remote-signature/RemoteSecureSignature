@@ -2,14 +2,16 @@
 
 import React, { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Lock, Loader2, CheckCircle2, ArrowLeft } from 'lucide-react';
+import { Loader2, CheckCircle2 } from 'lucide-react';
 import "@/app/styles/components.css";
+import axios from 'axios';
 
 // --- 1. สร้าง Component ไส้ใน (เพื่อใช้ useSearchParams) ---
 function ResetPassContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const token = searchParams.get('token'); // ดึงค่า ?token=... จาก URL
+  const email = searchParams.get('email');
+  const [otp, setOtp] = useState('');
 
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -21,11 +23,20 @@ function ResetPassContent() {
     e.preventDefault();
     setErrorMsg(''); // เคลียร์ error เก่าก่อน
 
-    // ตรวจสอบความถูกต้องเบื้องต้น
-    if (password.length < 6) {
-      setErrorMsg('รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษร');
+    if (!email) {
+      setErrorMsg('ไม่พบอีเมลสำหรับรีเซ็ตรหัสผ่าน กรุณากลับไปขอ OTP ใหม่');
       return;
     }
+
+    if (!otp) {
+      setErrorMsg('กรุณากรอกรหัส OTP');
+      return;
+    }
+
+    // if (password.length < 6) {
+    //   setErrorMsg('รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษร');
+    //   return;
+    // }
     if (password !== confirmPassword) {
       setErrorMsg('รหัสผ่านและการยืนยันรหัสผ่านไม่ตรงกัน');
       return;
@@ -33,12 +44,23 @@ function ResetPassContent() {
 
     setIsLoading(true);
 
-    // จำลองการส่งข้อมูลไป API (รอ 1.5 วินาที)
-    // ของจริงให้เปลี่ยนเป็น fetch('/api/auth/reset-password', { method: 'POST', body: JSON.stringify({ token, newPassword: password }) })
-    setTimeout(() => {
-      setIsLoading(false);
+    try {
+      await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/srs/user/verify-otp`, {
+        email,
+        otp,
+        newPassword: password,
+      });
+
       setIsSuccess(true);
-    }, 1500);
+    } catch (error: unknown) {
+      if (axios.isAxiosError(error) && error.response) {
+        setErrorMsg(error.response.data?.error || 'ยืนยัน OTP ไม่สำเร็จ');
+      } else {
+        setErrorMsg('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้');
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // สไตล์ของ Input เดิมของคุณ (ปรับให้อยู่ใน relative div เพื่อใส่ไอคอน)
@@ -71,18 +93,17 @@ function ResetPassContent() {
     disabled:opacity-70 disabled:cursor-not-allowed
   `;
 
-  // กรณีไม่มี Token ใน URL (คนแอบพิมพ์ URL เข้ามาตรงๆ หรือลิงก์ผิด)
-  // if (!token) {
-  //   return (
-  //     <div className="relative z-10 bg-white mb-10 rounded-[25px] shadow-2xl w-full max-w-sm 2xl:max-w-md p-8 text-center flex flex-col items-center">
-  //       <h2 className="text-xl 2xl:text-2xl font-bold text-red-600 mb-2">ลิงก์ไม่ถูกต้อง หรือหมดอายุแล้ว</h2>
-  //       <p className="text-gray-500 text-sm 2xl:text-base mb-6">กรุณากดขอลิงก์รีเซ็ตรหัสผ่านใหม่อีกครั้ง</p>
-  //       <button onClick={() => router.push('/forgotpass')} className={primaryBtnStyle}>
-  //         ไปหน้าลืมรหัสผ่าน
-  //       </button>
-  //     </div>
-  //   );
-  // }
+  if (!email) {
+    return (
+      <div className="relative z-10 bg-white mb-10 rounded-[25px] shadow-2xl w-full max-w-sm 2xl:max-w-md p-8 text-center flex flex-col items-center">
+        <h2 className="text-xl 2xl:text-2xl font-bold text-red-600 mb-2">ไม่พบข้อมูลอีเมล</h2>
+        <p className="text-gray-500 text-sm 2xl:text-base mb-6">กรุณากลับไปหน้าลืมรหัสผ่านเพื่อขอ OTP ใหม่</p>
+        <button onClick={() => router.push('/forgotpass')} className={primaryBtnStyle}>
+          ไปหน้าลืมรหัสผ่าน
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="relative z-10 bg-white mb-10 rounded-[25px] shadow-2xl w-full max-w-sm 2xl:max-w-md p-8 pi:p-6 flex flex-col items-center">
@@ -105,6 +126,15 @@ function ResetPassContent() {
 
           <div className="w-full flex flex-col">
             <input 
+              type="text"
+              required
+              placeholder="รหัส OTP"
+              value={otp}
+              onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+              className={inputStyle} 
+            />
+
+            <input 
               type="password"
               required
               placeholder="รหัสผ่านใหม่" 
@@ -125,7 +155,7 @@ function ResetPassContent() {
 
           <button 
             type="submit"
-            disabled={isLoading || !password || !confirmPassword}
+            disabled={isLoading || !otp || !password || !confirmPassword}
             className={primaryBtnStyle}
           >
             {isLoading ? <Loader2 className="animate-spin h-5 w-5 2xl:h-6 2xl:w-6" /> : 'บันทึกรหัสผ่านใหม่'}
