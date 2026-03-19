@@ -189,9 +189,18 @@ const getUserProfile = async (req, res) => {
     const db = await open({ 
       filename: "./database/remote.db", 
       driver: sqlite3Verbose.Database });
-    
+
     const user = await db.get(
-      "SELECT * FROM users WHERE userId = ?", [id]);
+      `
+      SELECT
+        u.*, 
+        f.facultyName as userfacultyName
+      FROM users u
+      LEFT JOIN faculties f ON u.userfacultyId = f.facultyId
+      WHERE u.userId = ?
+      `,
+      [id]
+    );
     await db.close();
 
     if (user) {
