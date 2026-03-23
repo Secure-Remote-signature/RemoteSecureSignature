@@ -1,6 +1,10 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 import requests
+import os
+import re
+import json
+from datetime import datetime
 from app_config import build_api_url
 
 class ExecutionPage(tk.Frame):
@@ -15,56 +19,81 @@ class ExecutionPage(tk.Frame):
         self.setup_ui()
         self.setup_canvas_events()
 
+    def _save_signature_task_file(self, request_id):
+        # Save coordinates as a CNC-ready task file, keyed by request id.
+        safe_id = re.sub(r"[^A-Za-z0-9_-]", "_", str(request_id))
+        task_dir = os.path.join(os.path.dirname(__file__), "signature_tasks")
+        os.makedirs(task_dir, exist_ok=True)
+
+        payload = {
+            "requestId": request_id,
+            "generatedAt": datetime.utcnow().isoformat() + "Z",
+            "points_px": self.signature_points,
+            "requestMeta": {
+                "requestRTSP": self.current_request.get("requestRTSP"),
+                "requestStatus": self.current_request.get("requestStatus"),
+                "requestFile": self.current_request.get("requestFile"),
+            },
+        }
+
+        file_path = os.path.join(task_dir, f"signatureTask_{safe_id}.json")
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+
+        return file_path
+
     def setup_ui(self):
         # --- 1. Top Status Bar ---
         top_bar = tk.Frame(self, bg="#1E293B", height=60)
         top_bar.pack(side="top", fill="x")
+        top_bar.pack_propagate(False)
         
         self.status_lbl = tk.Label(top_bar, text="● SYSTEM READY...", font=("Arial", 14, "bold"), 
         bg="#1E293B", fg="#10B981")
         self.status_lbl.pack(side="left", padx=20, pady=15)
 
         tk.Button(top_bar, text="← กลับหน้าหลัก", bg="#334155", fg="white", relief="flat",
-              command=lambda: self.controller.show_frame("DashboardPage")).pack(side="right", padx=16)
+            command=lambda: self.controller.show_frame("DashboardPage")).pack(side="right", padx=16)
 
         # --- 2. Main Layout ---
         main_container = tk.Frame(self, bg="#111827")
-        main_container.pack(fill="both", expand=True, padx=20, pady=10)
+        main_container.pack(fill="both", expand=True, padx=12, pady=(6, 6))
 
         # --- กล้องเฝ้าหน้างาน CNC ---
         sig_frame = tk.LabelFrame(main_container, text=" กล้องเฝ้าหน้างาน CNC ", bg="#111827", fg="white")
-        sig_frame.pack(fill="both", expand=True, padx=10)
+        sig_frame.pack(fill="both", expand=True, padx=6, pady=(0, 6))
 
-        self.camera_view = tk.Canvas(sig_frame, bg="#000000", width=400, height=450)
+        self.camera_view = tk.Canvas(sig_frame, bg="#000000", width=400, height=300)
         self.camera_view.pack(fill="both", expand=True, pady=10, padx=10)
         self.show_camera_placeholder("รอเริ่มงานลงนาม")
 
-        tk.Button(sig_frame, text="REFRESH VIEW", bg="#64748B", fg="white", font=("Arial", 11),
-              command=self.refresh_camera_view).pack(fill="x", padx=10, pady=5)
+        tk.Button(sig_frame, text="REFRESH VIEW", bg="#64748B", fg="white", font=("Arial", 10),
+            command=self.refresh_camera_view).pack(fill="x", padx=10, pady=(0, 6))
 
         # --- 3. Bottom Control Buttons ---
-        btn_frame = tk.Frame(self, bg="#111827")
-        btn_frame.pack(side="top", pady=10)
+        btn_frame = tk.Frame(main_container, bg="#111827")
+        btn_frame.pack(fill="x", pady=(0, 6))
 
-        self.start_btn = tk.Button(btn_frame, text="START CNC SIGNING", bg="#10B981", fg="white", font=("Arial", 12, "bold"),
-              padx=20, pady=10, command=self.start_signing)
-        self.start_btn.pack(side="left", padx=10)
+        self.start_btn = tk.Button(btn_frame, text="START CNC SIGNING", bg="#10B981", fg="white", font=("Arial", 10, "bold"),
+            padx=12, pady=8, command=self.start_signing)
+        self.start_btn.pack(side="left", padx=6, fill="x", expand=True)
         
-        tk.Button(btn_frame, text="CANCEL", bg="#EF4444", fg="white", font=("Arial", 12, "bold"), padx=20, pady=10,
-                  command=lambda: self.controller.show_frame("DashboardPage")).pack(side="left", padx=10)
+        tk.Button(btn_frame, text="CANCEL", bg="#EF4444", fg="white", font=("Arial", 10, "bold"), padx=12, pady=8,
+            command=lambda: self.controller.show_frame("DashboardPage")).pack(side="left", padx=6, fill="x", expand=True)
 
-        tk.Button(btn_frame, text="ปฏิเสธการลงนาม", bg="#EF4444", fg="white", font=("Arial", 12, "bold"),
-                  padx=20, pady=10, command=self.reject_this_request).pack(side="left", padx=10)
+        tk.Button(btn_frame, text="ปฏิเสธการลงนาม", bg="#EF4444", fg="white", font=("Arial", 10, "bold"),
+            padx=12, pady=8, command=self.reject_this_request).pack(side="left", padx=6, fill="x", expand=True)
 
         # --- 4. Progress Area ---
-        bottom_frame = tk.Frame(self, bg="#0F172A", height=60)
-        bottom_frame.pack(side="bottom", fill="x", padx=40, pady=(0, 20))
-        
-        self.progress = ttk.Progressbar(bottom_frame, orient="horizontal", length=100, mode="determinate")
-        self.progress.pack(side="left", fill="x", expand=True, padx=20)
+        bottom_frame = tk.Frame(main_container, bg="#0F172A", height=54)
+        bottom_frame.pack(side="bottom", fill="x", padx=6, pady=(0, 4))
+        bottom_frame.pack_propagate(False)
 
-        tk.Button(bottom_frame, text="EMERGENCY STOP", bg="#EF4444", fg="white", font=("Arial", 10, "bold"),
-                  command=self.emergency_stop).pack(side="right", padx=10)
+        self.progress = ttk.Progressbar(bottom_frame, orient="horizontal", length=100, mode="determinate")
+        self.progress.pack(side="left", fill="x", expand=True, padx=(12, 8), pady=10)
+
+        tk.Button(bottom_frame, text="EMERGENCY STOP", bg="#EF4444", fg="white", font=("Arial", 9, "bold"),
+            command=self.emergency_stop).pack(side="right", padx=(4, 10), pady=8)
 
     # --- ระบบภาพกล้อง (Execution Monitor) ---
     def setup_canvas_events(self):
@@ -73,9 +102,9 @@ class ExecutionPage(tk.Frame):
     def show_camera_placeholder(self, text):
         self.camera_view.delete("all")
         self.camera_view.create_text(200, 200, text="CNC LIVE MONITOR", 
-                                     font=("Arial", 16, "bold"), fill="#94A3B8")
+            font=("Arial", 16, "bold"), fill="#94A3B8")
         self.camera_view.create_text(200, 240, text=text, 
-                                     font=("Arial", 11), fill="#E2E8F0")
+            font=("Arial", 11), fill="#E2E8F0")
 
     def refresh_camera_view(self):
         rtsp = self.current_request.get("requestRTSP") if self.current_request else None
@@ -132,6 +161,13 @@ class ExecutionPage(tk.Frame):
                 messagebox.showwarning("Warning", "ไม่พบพิกัดลายเซ็น กรุณากลับไปยืนยันจากหน้า Preview", parent=self.winfo_toplevel())
                 return
 
+            try:
+                task_file = self._save_signature_task_file(request_id)
+                print(f"Execution Page: บันทึกไฟล์พิกัดลายเซ็นแล้ว -> {task_file}")
+            except Exception as e:
+                messagebox.showerror("Error", f"บันทึกไฟล์พิกัดลายเซ็นไม่สำเร็จ: {e}", parent=self.winfo_toplevel())
+                return
+
             if not self.sign_command_sent:
                 try:
                     start_res = requests.put(
@@ -179,18 +215,15 @@ class ExecutionPage(tk.Frame):
         else:
             self.status_lbl.config(text="● FINISHED", fg="#10B981")
             try:
-                # close any simulation/preview modal so the messagebox appears on top
                 try:
                     self.cleanup_modals()
                 except:
                     pass
                 messagebox.showinfo("Success", "CNC Signing Completed!", parent=self.winfo_toplevel())
             finally:
-                # clear completed request state to avoid sending the same request twice
                 self.current_request = {}
                 self.signature_points = []
                 self.sign_command_sent = False
-                # allow starting again
                 self.running_signing = False
                 if hasattr(self, 'start_btn'):
                     try:
