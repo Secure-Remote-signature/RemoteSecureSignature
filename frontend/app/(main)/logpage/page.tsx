@@ -13,6 +13,16 @@ type HistoryRow = {
   requestMessage: string;
   requestDate: string;
   requestStatus: string;
+  requestRTSP: string | null;
+  requestPicture: string | null;
+  signatureCoordinates: string | null;
+  ownerName: string | null;
+  ownerLastName: string | null;
+  createdAt: string | null;
+  claimedAt: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  stateVersion: number | null;
   studentName: string | null;
   studentLastName: string | null;
 };
@@ -24,6 +34,16 @@ type LogItem = {
   date: string;
   status: UiStatus;
   rawStatus: string;
+  requestNumber: string;
+  requestRTSP: string;
+  ownerName: string;
+  createdAt: string;
+  claimedAt: string;
+  startedAt: string;
+  completedAt: string;
+  stateVersion: string;
+  requestPicture: string | null;
+  signatureCoordinates: string | null;
 };
 
 function mapStatusToUi(status?: string): UiStatus {
@@ -51,6 +71,7 @@ export default function HistoryLogPage() {
   const [logs, setLogs] = useState<LogItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [selectedLog, setSelectedLog] = useState<LogItem | null>(null);
 
   useEffect(() => {
     const fetchHistory = async () => {
@@ -80,7 +101,17 @@ export default function HistoryLogPage() {
             sender,
             date: formatDate(row.requestDate),
             status: mapStatusToUi(row.requestStatus),
-            rawStatus: row.requestStatus || '-'
+            rawStatus: row.requestStatus || '-',
+            requestNumber: row.requestNumber || '-',
+            requestRTSP: row.requestRTSP || '-',
+            ownerName: [row.ownerName || '', row.ownerLastName || ''].join(' ').trim() || '-',
+            createdAt: formatDate(row.createdAt || undefined),
+            claimedAt: formatDate(row.claimedAt || undefined),
+            startedAt: formatDate(row.startedAt || undefined),
+            completedAt: formatDate(row.completedAt || undefined),
+            stateVersion: row.stateVersion !== null && row.stateVersion !== undefined ? String(row.stateVersion) : '-',
+            requestPicture: row.requestPicture || null,
+            signatureCoordinates: row.signatureCoordinates || null,
           };
         });
 
@@ -132,8 +163,165 @@ export default function HistoryLogPage() {
     }
   };
 
+  const drawPreviewToCanvas = async (canvas: HTMLCanvasElement, log: LogItem) => {
+    if (!log.requestPicture) {
+      throw new Error('ไม่พบไฟล์เอกสาร');
+    }
+
+    const imageUrl = `${process.env.NEXT_PUBLIC_API_URL}/uploads/${log.requestPicture}`;
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error('โหลดรูปเอกสารไม่สำเร็จ'));
+      img.src = imageUrl;
+    });
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      throw new Error('ไม่สามารถแสดงพรีวิวได้');
+    }
+
+    canvas.width = img.width;
+    canvas.height = img.height;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0);
+
+    let paths: Array<Array<{ x: number; y: number }>> = [];
+    if (log.signatureCoordinates) {
+      try {
+        const parsed = JSON.parse(log.signatureCoordinates);
+        if (Array.isArray(parsed)) {
+          paths = parsed;
+        }
+      } catch {
+        paths = [];
+      }
+    }
+
+    if (paths.length > 0) {
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = '#1D4ED8';
+      ctx.lineCap = 'round';
+      let minX = Number.POSITIVE_INFINITY;
+      let minY = Number.POSITIVE_INFINITY;
+      let maxX = Number.NEGATIVE_INFINITY;
+      let maxY = Number.NEGATIVE_INFINITY;
+
+      for (const path of paths) {
+        if (!Array.isArray(path) || path.length < 2) continue;
+        ctx.beginPath();
+        const first = path[0];
+        ctx.moveTo(Number(first.x), Number(first.y));
+        minX = Math.min(minX, Number(first.x));
+        minY = Math.min(minY, Number(first.y));
+        maxX = Math.max(maxX, Number(first.x));
+        maxY = Math.max(maxY, Number(first.y));
+
+        for (let i = 1; i < path.length; i += 1) {
+          const p = path[i];
+          ctx.lineTo(Number(p.x), Number(p.y));
+          minX = Math.min(minX, Number(p.x));
+          minY = Math.min(minY, Number(p.y));
+          maxX = Math.max(maxX, Number(p.x));
+          maxY = Math.max(maxY, Number(p.y));
+        }
+        ctx.stroke();
+      }
+
+      if (Number.isFinite(minX) && Number.isFinite(minY) && Number.isFinite(maxX) && Number.isFinite(maxY)) {
+        const pad = 14;
+        ctx.save();
+        ctx.setLineDash([12, 8]);
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = '#EF4444';
+        ctx.strokeRect(minX - pad, minY - pad, (maxX - minX) + pad * 2, (maxY - minY) + pad * 2);
+        ctx.restore();
+      }
+    }
+  };
+
+  const SignedPreviewModal = ({ log, onClose }: { log: LogItem; onClose: () => void }) => {
+    const [isDrawing, setIsDrawing] = useState(true);
+    const [canvasRef, setCanvasRef] = useState<HTMLCanvasElement | null>(null);
+    const [previewError, setPreviewError] = useState('');
+    const [zoom, setZoom] = useState(1);
+
+    useEffect(() => {
+      let cancelled = false;
+      const run = async () => {
+        if (!canvasRef) return;
+        try {
+          setPreviewError('');
+          setIsDrawing(true);
+          await drawPreviewToCanvas(canvasRef, log);
+        } catch (e) {
+          if (!cancelled) {
+            setPreviewError((e as Error).message || 'เปิดพรีวิวไม่สำเร็จ');
+          }
+        } finally {
+          if (!cancelled) setIsDrawing(false);
+        }
+      };
+
+      run();
+      return () => {
+        cancelled = true;
+      };
+    }, [canvasRef, log]);
+
+    return (
+      <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden">
+          <div className="px-4 py-3 border-b flex items-center justify-between">
+            <div className="text-sm pi:text-base text-gray-700">
+              {log.docName} | สถานะ: <span className="font-bold">{log.rawStatus}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700"
+                onClick={() => setZoom((v) => Math.max(0.2, Number((v - 0.1).toFixed(2))))}
+              >
+                -
+              </button>
+              <div className="text-xs font-bold text-slate-600 min-w-14 text-center">{Math.round(zoom * 100)}%</div>
+              <button
+                className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700"
+                onClick={() => setZoom((v) => Math.min(4, Number((v + 0.1).toFixed(2))))}
+              >
+                +
+              </button>
+              <button
+                className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700"
+                onClick={() => setZoom(1)}
+              >
+                100%
+              </button>
+              <button className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700" onClick={onClose}>ปิด</button>
+            </div>
+          </div>
+
+          <div className="px-4 py-2.5 border-b bg-slate-50 text-xs pi:text-sm text-slate-700 leading-6">
+            <div>เลขเอกสาร: <span className="font-semibold">{log.requestNumber}</span> | ผู้ลงนาม: <span className="font-semibold">{log.ownerName}</span> | ผู้ส่ง: <span className="font-semibold">{log.sender}</span></div>
+            <div>สร้าง: {log.createdAt} | เริ่มเซ็น: {log.startedAt} | เซ็นเสร็จ: {log.completedAt} | RTSP: {log.requestRTSP} | version: {log.stateVersion}</div>
+          </div>
+
+          <div className="flex-1 overflow-auto bg-slate-900/95 p-4">
+            {isDrawing && <div className="text-slate-200">กำลังโหลดพรีวิว...</div>}
+            {previewError && <div className="text-red-300">{previewError}</div>}
+            <div className="inline-block origin-top-left" style={{ transform: `scale(${zoom})` }}>
+              <canvas ref={setCanvasRef} className="max-w-full h-auto mx-auto bg-white rounded-lg shadow-lg" />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
-    // ปรับ Layout เป็น Flex Column เต็มจอ พื้นหลังขาวสะอาด
+    <>
+    {/* ปรับ Layout เป็น Flex Column เต็มจอ พื้นหลังขาวสะอาด */}
     <div className="w-full h-full flex flex-col bg-white">
       
       {/* --- ส่วนหัว (Header) แบบ Minimal --- */}
@@ -213,7 +401,7 @@ export default function HistoryLogPage() {
                   </td>
                   <td className="px-3 py-3 text-center">
                     <button 
-                      onClick={() => alert(`ID: ${log.id}\nสถานะ: ${log.rawStatus}`)}
+                      onClick={() => setSelectedLog(log)}
                       className="p-3 text-gray-400 hover:text-indigo-600 hover:bg-indigo-100 rounded-xl transition-colors inline-flex items-center justify-center border border-gray-200 hover:border-indigo-200"
                     >
                       <Eye size={28} />
@@ -242,5 +430,10 @@ export default function HistoryLogPage() {
       </div>
 
     </div>
+
+      {selectedLog && (
+        <SignedPreviewModal log={selectedLog} onClose={() => setSelectedLog(null)} />
+      )}
+    </>
   );
 }
