@@ -1,6 +1,8 @@
 import tkinter as tk
 from tkinter import messagebox
 import requests
+from app_config import build_api_url
+
 class ResetPasswordPage(tk.Frame):
     def __init__(self, parent, controller):
         super().__init__(parent, bg="#F9FAFB")
@@ -55,15 +57,13 @@ class ResetPasswordPage(tk.Frame):
             messagebox.showwarning("Warning", "PINs do not match!")
             return
 
-        backend_url = "http://192.168.1.39:5000/api/verify-otp"
-
         try:
             payload = {
                 "email": self.email_address, # ต้องมีค่านี้ส่งไปด้วย!
                 "otp": self.code_entry.get(),
                 "newPassword": self.new_pass_entry.get()
             }
-            response = requests.post("http://localhost:5000/srs/user/verify-otp", json=payload)
+            response = requests.post(build_api_url("/srs/user/verify-otp"), json=payload)
             if response.status_code == 200:
                 messagebox.showinfo("Success", "Your PIN has been reset.")
                 self.controller.show_frame("LoginPage")
