@@ -1,15 +1,15 @@
 import tkinter as tk
 from tkinter import messagebox
-from login import LoginPage
-from dashboard import DashboardPage
-from signature import SignaturePage
-from setting import SettingPage
-from history import HistoryPage
-from pin_confirm import PinConfirmPage
-from execution import ExecutionPage
-from forgot_password import ForgotPasswordPage
-from reset_password import ResetPasswordPage
-from change_password import ChangePasswordPage
+from userLogin.login import LoginPage
+from mainpage.dashboard import DashboardPage
+from userSigning.signature import SignaturePage
+from mainpage.setting import SettingPage
+from mainpage.history import HistoryPage
+from userSigning.pin_confirm import PinConfirmPage
+from userSigning.execution import ExecutionPage
+from userLogin.forgot_password import ForgotPasswordPage
+from userLogin.reset_password import ResetPasswordPage
+from userLogin.change_password import ChangePasswordPage
 
 class MainApp(tk.Tk):
     def __init__(self):
