@@ -41,7 +41,6 @@ class DashboardPage(tk.Frame):
         content_frame.place(relx=0.5, rely=0.5, anchor="center")
 
         # Status Icon/Label
-        tk.Label(content_frame, text="🔔", font=("Arial", 60), bg="#F9FAFB").pack()
         
         tk.Label(content_frame, text="Waiting for new signature requests...", 
                                 font=("Arial", 18), bg="#F9FAFB", fg="#64748B").pack(pady=20)
@@ -56,10 +55,8 @@ class DashboardPage(tk.Frame):
                   bg="#F9FAFB", fg="#4F46E5", bd=0, cursor="hand2",
                   command=lambda: controller.show_frame("HistoryPage")).pack(side="bottom", pady=30)
 
-        # เริ่ม polling หลังล็อกอินสำเร็จใน update_user_info เท่านั้น
         
     def update_user_info(self):
-        # รีเซ็ตสถานะทุกครั้งเมื่อเข้าหน้า Dashboard ใหม่
         self.stop_polling()
         self.last_notified_id = None
         
@@ -108,7 +105,6 @@ class DashboardPage(tk.Frame):
         self.polling_id = self.after(3000, self.poll_for_requests)
     
     def stop_polling(self):
-        """หยุด polling เมื่อออกจาก dashboard"""
         if self.polling_id:
             self.after_cancel(self.polling_id)
             self.polling_id = None
