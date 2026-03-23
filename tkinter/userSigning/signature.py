@@ -35,11 +35,11 @@ class SignaturePage(tk.Frame):
         
         # Back Button
         tk.Button(toolbar, text="← BACK", font=("Arial", 10, "bold"), bg="#64748B", fg="#FFFFFF", 
-                  relief="flat", padx=15, command=lambda: self.controller.show_frame("DashboardPage")).pack(side="left", padx=15, pady=10)
+            relief="flat", padx=15, command=lambda: self.controller.show_frame("DashboardPage")).pack(side="left", padx=15, pady=10)
 
         # Fetch Document Button
         tk.Button(toolbar, text="🔄 FETCH REQUEST", font=("Arial", 10, "bold"), bg="#4F46E5", fg="#FFFFFF", 
-                  relief="flat", padx=15, command=self.fetch_doc).pack(side="left", padx=5)
+            relief="flat", padx=15, command=self.fetch_doc).pack(side="left", padx=5)
 
         # Zoom Controls
         zoom_frame = tk.Frame(toolbar, bg="#FFFFFF")
@@ -51,7 +51,7 @@ class SignaturePage(tk.Frame):
 
         # Confirm/Simulate Button
         tk.Button(toolbar, text="PREVIEW + CONFIRM", font=("Arial", 10, "bold"), bg="#10B981", fg="#FFFFFF", 
-              relief="flat", padx=20, command=self.show_simulation).pack(side="right", padx=15)
+            relief="flat", padx=20, command=self.show_simulation).pack(side="right", padx=15)
 
         # --- Main Split Screen (Using PanedWindow) ---
         self.paned_window = tk.PanedWindow(self, orient=tk.HORIZONTAL, bg="#E5E7EB", sashwidth=6)
@@ -70,7 +70,7 @@ class SignaturePage(tk.Frame):
         
         # Clear Button on the right
         tk.Button(self.right_frame, text="CLEAR SIGNATURE", font=("Arial", 9), bg="#EF4444", fg="#FFFFFF", 
-                  relief="flat", command=self.clear_sign).pack(pady=10)
+            relief="flat", command=self.clear_sign).pack(pady=10)
         
         self.paned_window.add(self.right_frame, width=512)
 
