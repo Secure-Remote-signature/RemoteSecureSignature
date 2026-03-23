@@ -125,8 +125,7 @@ class ExecutionPage(tk.Frame):
         self.running_signing = False
         print(f"Execution Page: ได้รับ data request - {self.current_request}")
         self.refresh_camera_view()
-    
-    
+  
     def cleanup_modals(self):
         if self.sim_win:
             try:
