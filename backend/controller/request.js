@@ -344,15 +344,23 @@ const getHistoryByProfessor = async (req, res) => {
                 r.requestStatus,
                 r.requestRTSP,
                 r.requestPicture,
+                r.signatureCoordinates,
+                r.ownerRequestID,
+                r.clientRequestID,
+                r.claimedBy,
+                r.stateVersion,
                 r.createdAt,
                 r.updatedAt,
                 r.claimedAt,
                 r.startedAt,
                 r.completedAt,
                 u.userName as studentName,
-                u.userLastname as studentLastName
+                u.userLastname as studentLastName,
+                p.userName as ownerName,
+                p.userLastname as ownerLastName
             FROM requestSign r
             LEFT JOIN users u ON r.clientRequestID = u.userId
+            LEFT JOIN users p ON r.ownerRequestID = p.userId
             WHERE r.ownerRequestID = ?
             ORDER BY r.requestId DESC
             LIMIT ?
