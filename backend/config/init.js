@@ -47,6 +47,7 @@ async function initializeDatabase() {
          requestId INTEGER PRIMARY KEY AUTOINCREMENT,
          requestNumber TEXT NOT NULL,
          requestDate DATETIME NOT NULL,
+         requestSubject TEXT,
          requestMessage TEXT NOT NULL,
          requestRTSP TEXT NOT NULL,
          requestPicture TEXT NOT NULL,
@@ -64,61 +65,6 @@ async function initializeDatabase() {
          stateVersion INTEGER DEFAULT 0
        );
      `);
-
-    const requestSignColumns = await db.all("PRAGMA table_info(requestSign)");
-    const hasSignatureArea = requestSignColumns.some((col) => col.name === "signatureArea");
-    if (!hasSignatureArea) {
-      await db.exec("ALTER TABLE requestSign ADD COLUMN signatureArea TEXT");
-      console.log("Added missing column: requestSign.signatureArea");
-    }
-
-    const hasSignatureCoordinates = requestSignColumns.some((col) => col.name === "signatureCoordinates");
-    if (!hasSignatureCoordinates) {
-      await db.exec("ALTER TABLE requestSign ADD COLUMN signatureCoordinates TEXT");
-      console.log("Added missing column: requestSign.signatureCoordinates");
-    }
-
-    const hasCreatedAt = requestSignColumns.some((col) => col.name === "createdAt");
-    if (!hasCreatedAt) {
-      await db.exec("ALTER TABLE requestSign ADD COLUMN createdAt DATETIME");
-      console.log("Added missing column: requestSign.createdAt");
-    }
-
-    const hasUpdatedAt = requestSignColumns.some((col) => col.name === "updatedAt");
-    if (!hasUpdatedAt) {
-      await db.exec("ALTER TABLE requestSign ADD COLUMN updatedAt DATETIME");
-      console.log("Added missing column: requestSign.updatedAt");
-    }
-
-    const hasClaimedAt = requestSignColumns.some((col) => col.name === "claimedAt");
-    if (!hasClaimedAt) {
-      await db.exec("ALTER TABLE requestSign ADD COLUMN claimedAt DATETIME");
-      console.log("Added missing column: requestSign.claimedAt");
-    }
-
-    const hasStartedAt = requestSignColumns.some((col) => col.name === "startedAt");
-    if (!hasStartedAt) {
-      await db.exec("ALTER TABLE requestSign ADD COLUMN startedAt DATETIME");
-      console.log("Added missing column: requestSign.startedAt");
-    }
-
-    const hasCompletedAt = requestSignColumns.some((col) => col.name === "completedAt");
-    if (!hasCompletedAt) {
-      await db.exec("ALTER TABLE requestSign ADD COLUMN completedAt DATETIME");
-      console.log("Added missing column: requestSign.completedAt");
-    }
-
-    const hasClaimedBy = requestSignColumns.some((col) => col.name === "claimedBy");
-    if (!hasClaimedBy) {
-      await db.exec("ALTER TABLE requestSign ADD COLUMN claimedBy INTEGER");
-      console.log("Added missing column: requestSign.claimedBy");
-    }
-
-    const hasStateVersion = requestSignColumns.some((col) => col.name === "stateVersion");
-    if (!hasStateVersion) {
-      await db.exec("ALTER TABLE requestSign ADD COLUMN stateVersion INTEGER DEFAULT 0");
-      console.log("Added missing column: requestSign.stateVersion");
-    }
 
     await db.exec("CREATE INDEX IF NOT EXISTS idx_request_owner_status ON requestSign(ownerRequestID, requestStatus, requestId DESC)");
     await db.exec("CREATE INDEX IF NOT EXISTS idx_request_status_date ON requestSign(requestStatus, requestDate DESC)");
