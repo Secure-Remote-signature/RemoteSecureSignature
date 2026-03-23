@@ -32,7 +32,7 @@ class IncomingAlert(tk.Toplevel):
 
         add_info("ผู้ส่ง:", data.get('studentName', 'ไม่ระบุชื่อ'))
         add_info("เลขที่:", data.get('requestNumber', '-'))
-        add_info("เรื่อง:", data.get('requestMessage', 'ไม่มีรายละเอียด'))
+        add_info("เรื่อง:", data.get('requestSubject') or data.get('requestMessage', 'ไม่มีรายละเอียด'))
         
         # --- detail ---
         tk.Label(content, text="ข้อความจากผู้ส่ง:", font=("Arial", 11, "bold"), bg="#FFFFFF", fg="#1E293B").pack(anchor="w", pady=(10, 5))
