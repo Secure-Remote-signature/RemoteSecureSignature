@@ -10,6 +10,7 @@ type UiStatus = 'success' | 'failed' | 'processing';
 type HistoryRow = {
   requestId: number;
   requestNumber: string;
+  requestSubject: string | null;
   requestMessage: string;
   requestDate: string;
   requestStatus: string;
@@ -97,7 +98,7 @@ export default function HistoryLogPage() {
           const sender = [row.studentName || '', row.studentLastName || ''].join(' ').trim() || '-';
           return {
             id: `REQ-${row.requestId}`,
-            docName: row.requestMessage || row.requestNumber || '-',
+            docName: row.requestSubject || row.requestMessage || row.requestNumber || '-',
             sender,
             date: formatDate(row.requestDate),
             status: mapStatusToUi(row.requestStatus),
