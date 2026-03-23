@@ -1,8 +1,8 @@
 import tkinter as tk
 from tkinter import messagebox, ttk
-
 import requests
-from alert import IncomingAlert
+from userSigning.alert import IncomingAlert
+from app_config import build_api_url
 
 class DashboardPage(tk.Frame):
     def __init__(self, parent, controller):
@@ -12,7 +12,6 @@ class DashboardPage(tk.Frame):
         
         self.last_notified_id = None  # To track the last notified request ID for polling
         self.polling_id = None  # เก็บ ID ของ after() polling task
-        self.skip_initial_pending = True  # ไม่เด้ง alert ทันทีเมื่อเพิ่งเข้าหน้า Dashboard
         
         # --- Top Navigation Bar ---
         top_bar = tk.Frame(self, bg="#FFFFFF", height=60, bd=0, highlightthickness=1, highlightbackground="#E5E7EB")
@@ -63,7 +62,6 @@ class DashboardPage(tk.Frame):
         # รีเซ็ตสถานะทุกครั้งเมื่อเข้าหน้า Dashboard ใหม่
         self.stop_polling()
         self.last_notified_id = None
-        self.skip_initial_pending = True
         
         if hasattr(self.controller, 'current_user_id'):
             self.prof_id = self.controller.current_user_id
@@ -81,28 +79,28 @@ class DashboardPage(tk.Frame):
             return
 
         try:
-            url = f"http://localhost:5000/srs/request/pending/{self.prof_id}"
-            response = requests.get(url, timeout=3)
+            url = build_api_url("/srs/request/claim-next")
+            payload = {
+                "ownerRequestID": self.prof_id,
+                "claimerId": self.prof_id
+            }
+            response = requests.post(url, json=payload, timeout=3)
             
             if response.status_code == 200:
                 data = response.json()
                 
                 if data and "requestId" in data:
                     request_id = data.get('requestId')
-
-                    # ครั้งแรกหลังเข้า Dashboard: จำคำร้องล่าสุดไว้ก่อน ไม่แจ้งเตือนทันที
-                    if self.skip_initial_pending:
+                    if request_id != self.last_notified_id:
                         self.last_notified_id = request_id
-                        self.skip_initial_pending = False
-                        print(f"📝 พบคำร้องค้างระบบ requestId={request_id} (ยังไม่เด้ง alert รอบแรก)")
-                    elif request_id != self.last_notified_id:
-                        print(f"✅ เจอคำร้องใหม่จากคุณ: {data.get('studentName')} (requestId={request_id})")
-                        self.last_notified_id = request_id
+                        print(f"✅ Claimed คำร้องใหม่จากคุณ: {data.get('studentName')} (requestId={request_id})")
                         self.trigger_alert(data)
-                    else:
-                        print(f"😴 requestId={request_id} ยังเป็นคำร้องเดิม")
                 else:
                     print(f"😴 ID {self.prof_id}: ยังไม่มีคำร้องใหม่...")
+            elif response.status_code == 409:
+                print("⚠️ Claim conflict - จะลองใหม่รอบถัดไป")
+            else:
+                print(f"⚠️ claim-next failed: HTTP {response.status_code}")
                     
         except Exception as e:
             print(f"❌ Connection Error: {e}")
@@ -117,7 +115,6 @@ class DashboardPage(tk.Frame):
             print("⏹️ Polling stopped")
 
     def trigger_alert(self, data):
-        from alert import IncomingAlert
         self.last_notified_id = data.get('requestId') 
         alert = IncomingAlert(
             self, 
@@ -131,7 +128,7 @@ class DashboardPage(tk.Frame):
     
     def handle_reject(self, data):
         req_id = data.get('requestId')
-        api_url = f"http://localhost:5000/srs/request/update-status/{req_id}"
+        api_url = build_api_url(f"/srs/request/update-status/{req_id}")
         
         try:
             res = requests.put(api_url, json={"status": "Rejected"}, timeout=3)
