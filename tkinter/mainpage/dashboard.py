@@ -10,8 +10,8 @@ class DashboardPage(tk.Frame):
         self.controller = controller
         self.prof_id = None
         
-        self.last_notified_id = None  # To track the last notified request ID for polling
-        self.polling_id = None  # เก็บ ID ของ after() polling task
+        self.last_notified_id = None
+        self.polling_id = None
         
         # --- Top Navigation Bar ---
         top_bar = tk.Frame(self, bg="#FFFFFF", height=60, bd=0, highlightthickness=1, highlightbackground="#E5E7EB")
@@ -19,7 +19,7 @@ class DashboardPage(tk.Frame):
         
         # Welcome text 
         self.user_lbl = tk.Label(top_bar, text="Welcome, Professor", font=("Arial", 14, "bold"), 
-                                 bg="#FFFFFF", fg="#1E293B")
+            bg="#FFFFFF", fg="#1E293B")
         self.user_lbl.pack(side="left", padx=20, pady=15)
         
         # Action Buttons Container (Right Side)
@@ -28,13 +28,13 @@ class DashboardPage(tk.Frame):
 
         # Setting Button (Gray style: #64748B)
         tk.Button(btn_container, text="SETTING", font=("Arial", 10, "bold"), 
-                  bg="#64748B", fg="#FFFFFF", relief="flat", padx=15,
-                  command=lambda: controller.show_frame("SettingPage")).pack(side="left", padx=5)
+            bg="#64748B", fg="#FFFFFF", relief="flat", padx=15,
+            command=lambda: controller.show_frame("SettingPage")).pack(side="left", padx=5)
 
         # Logout button
         tk.Button(btn_container, text="LOGOUT", font=("Arial", 10, "bold"), 
-                  bg="#EF4444", fg="#FFFFFF", relief="flat", padx=15,
-                  command=self.controller.logout).pack(side="left", padx=5)
+            bg="#EF4444", fg="#FFFFFF", relief="flat", padx=15,
+            command=self.controller.logout).pack(side="left", padx=5)
 
         # --- Main Content Area ---
         content_frame = tk.Frame(self, bg="#F9FAFB")
@@ -45,15 +45,10 @@ class DashboardPage(tk.Frame):
         tk.Label(content_frame, text="Waiting for new signature requests...", 
                                 font=("Arial", 18), bg="#F9FAFB", fg="#64748B").pack(pady=20)
 
-        # Accept Request Button
-        tk.Button(content_frame, text="ACCEPT REQUEST", font=("Arial", 16, "bold"), 
-                                    bg="#4338CA", fg="#FFFFFF", width=20,
-                                    command=lambda: controller.show_frame("SignaturePage")).pack(pady=20, ipady=10)
-
         # View History Button
-        tk.Button(self, text="View Signing History", font=("Arial", 12, "underline"), 
-                  bg="#F9FAFB", fg="#4F46E5", bd=0, cursor="hand2",
-                  command=lambda: controller.show_frame("HistoryPage")).pack(side="bottom", pady=30)
+        tk.Button(self, text="View Signing History", font=("Arial", 16, "underline"), 
+            bg="#F9FAFB", fg="#4F46E5", bd=0, cursor="hand2",
+            command=lambda: controller.show_frame("HistoryPage")).pack(side="bottom", pady=30)
 
         
     def update_user_info(self):
