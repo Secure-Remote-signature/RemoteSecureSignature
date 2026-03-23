@@ -1,28 +1,111 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Search, FileText, CheckCircle2, XCircle, Clock, Eye } from 'lucide-react';
 import "@/app/styles/components.css";
+import api from '@/app/lib/api';
 
-// Mock Data
-const mockLogs = [
-  { id: 'srs-001', docName: 'เอกสารอนุมัติจบการศึกษา', sender: 'สมหญิง ใจดี', date: '25/02/26 14:30', status: 'success' },
-  { id: 'srs-002', docName: 'ใบขอเบิกงบประมาณโครงการ', sender: 'ฝ่ายการเงิน', date: '25/02/26 10:15', status: 'success' },
-  { id: 'srs-003', docName: 'หนังสือขออนุญาตใช้สถานที่', sender: 'สมชาย รักเรียน', date: '24/02/26 16:45', status: 'failed' },
-  { id: 'srs-004', docName: 'สัญญาจ้างผู้รับเหมา CNC', sender: 'ฝ่ายจัดซื้อ', date: '24/02/26 09:00', status: 'processing' },
-  { id: 'srs-005', docName: 'แบบฟอร์มขอลาพักร้อน', sender: 'มานะ อดทน', date: '23/02/26 11:20', status: 'success' },
-  { id: 'srs-006', docName: 'บันทึกข้อความภายใน', sender: 'ธุรการ', date: '22/02/26 08:30', status: 'success' },
-  { id: 'srs-007', docName: 'เอกสารลาป่วย', sender: 'วิชัย ใจสู้', date: '21/02/26 09:45', status: 'failed' },
-];
+type UiStatus = 'success' | 'failed' | 'processing';
+
+type HistoryRow = {
+  requestId: number;
+  requestNumber: string;
+  requestMessage: string;
+  requestDate: string;
+  requestStatus: string;
+  studentName: string | null;
+  studentLastName: string | null;
+};
+
+type LogItem = {
+  id: string;
+  docName: string;
+  sender: string;
+  date: string;
+  status: UiStatus;
+  rawStatus: string;
+};
+
+function mapStatusToUi(status?: string): UiStatus {
+  const normalized = (status || '').toLowerCase();
+  if (normalized === 'signed') return 'success';
+  if (normalized === 'rejected') return 'failed';
+  return 'processing';
+}
+
+function formatDate(isoText?: string): string {
+  if (!isoText) return '-';
+  const dt = new Date(isoText);
+  if (Number.isNaN(dt.getTime())) return isoText;
+
+  const dd = String(dt.getDate()).padStart(2, '0');
+  const mm = String(dt.getMonth() + 1).padStart(2, '0');
+  const yy = String(dt.getFullYear()).slice(-2);
+  const hh = String(dt.getHours()).padStart(2, '0');
+  const mi = String(dt.getMinutes()).padStart(2, '0');
+  return `${dd}/${mm}/${yy} ${hh}:${mi}`;
+}
 
 export default function HistoryLogPage() {
   const [searchTerm, setSearchTerm] = useState('');
+  const [logs, setLogs] = useState<LogItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  const filteredLogs = mockLogs.filter(log => 
-    log.docName.includes(searchTerm) || 
-    log.sender.includes(searchTerm) || 
-    log.id.includes(searchTerm)
-  );
+  useEffect(() => {
+    const fetchHistory = async () => {
+      try {
+        setLoading(true);
+        setError('');
+        const rawSession = sessionStorage.getItem('user_session');
+        if (!rawSession) {
+          throw new Error('ไม่พบ session ผู้ใช้');
+        }
+
+        const session = JSON.parse(rawSession);
+        const userId = session?.id;
+        if (!userId) {
+          throw new Error('ไม่พบ user id ใน session');
+        }
+
+        const url = `${process.env.NEXT_PUBLIC_API_URL}/srs/request/history/${userId}?limit=100`;
+        const res = await api.get(url);
+        const rows = (res.data || []) as HistoryRow[];
+
+        const mapped: LogItem[] = rows.map((row) => {
+          const sender = [row.studentName || '', row.studentLastName || ''].join(' ').trim() || '-';
+          return {
+            id: `REQ-${row.requestId}`,
+            docName: row.requestMessage || row.requestNumber || '-',
+            sender,
+            date: formatDate(row.requestDate),
+            status: mapStatusToUi(row.requestStatus),
+            rawStatus: row.requestStatus || '-'
+          };
+        });
+
+        setLogs(mapped);
+      } catch (err) {
+        console.error('โหลดประวัติไม่สำเร็จ', err);
+        setError('โหลดประวัติไม่สำเร็จ');
+        setLogs([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchHistory();
+  }, []);
+
+  const filteredLogs = useMemo(() => {
+    const q = searchTerm.trim();
+    if (!q) return logs;
+    return logs.filter((log) =>
+      log.docName.includes(q) ||
+      log.sender.includes(q) ||
+      log.id.includes(q)
+    );
+  }, [logs, searchTerm]);
 
   const renderStatusBadge = (status: string) => {
     switch (status) {
@@ -65,7 +148,7 @@ export default function HistoryLogPage() {
             </div>
         </div>
         <div className="relative w-full pi:w-64 2xl:w-96">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items4 flex items-center pointer-events-none">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
             <Search className="2xl:h-6 2xl:w-6 pi:h-4 pi:w-4 text-gray-400" />
           </div>
           <input
@@ -97,7 +180,19 @@ export default function HistoryLogPage() {
           
           {/* เนื้อหาตาราง */}
           <tbody className="divide-y divide-gray-200">
-            {filteredLogs.length > 0 ? (
+            {loading ? (
+              <tr>
+                <td colSpan={6} className="px-5 py-20 text-center text-gray-500">
+                  กำลังโหลดประวัติ...
+                </td>
+              </tr>
+            ) : error ? (
+              <tr>
+                <td colSpan={6} className="px-5 py-20 text-center text-red-500">
+                  {error}
+                </td>
+              </tr>
+            ) : filteredLogs.length > 0 ? (
               filteredLogs.map((log) => (
                 // ใช้ odd:bg-white even:bg-gray-50 (Zebra Striping) เพื่อให้อ่านง่าย
                 <tr key={log.id} className="odd:bg-white even:bg-slate-50 hover:bg-indigo-50 transition-colors">
@@ -118,7 +213,7 @@ export default function HistoryLogPage() {
                   </td>
                   <td className="px-3 py-3 text-center">
                     <button 
-                      onClick={() => alert(`ดูรายละเอียดของ ${log.id}`)}
+                      onClick={() => alert(`ID: ${log.id}\nสถานะ: ${log.rawStatus}`)}
                       className="p-3 text-gray-400 hover:text-indigo-600 hover:bg-indigo-100 rounded-xl transition-colors inline-flex items-center justify-center border border-gray-200 hover:border-indigo-200"
                     >
                       <Eye size={28} />
