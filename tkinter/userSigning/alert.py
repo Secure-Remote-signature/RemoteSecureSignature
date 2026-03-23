@@ -30,7 +30,11 @@ class IncomingAlert(tk.Toplevel):
             tk.Label(row, text=label, font=("Arial", 11, "bold"), bg="#FFFFFF", fg="#1E293B", width=8, anchor="w").pack(side="left")
             tk.Label(row, text=text, font=("Arial", 11), bg="#FFFFFF", fg="#475569").pack(side="left", padx=5)
 
-        add_info("ผู้ส่ง:", data.get('studentName', 'ไม่ระบุชื่อ'))
+        first_name = (data.get('studentName') or '').strip()
+        last_name = (data.get('studentLastName') or data.get('studentLastname') or '').strip()
+        sender_name = f"{first_name} {last_name}".strip() or 'ไม่ระบุชื่อ'
+
+        add_info("ผู้ส่ง:", sender_name)
         add_info("เลขที่:", data.get('requestNumber', '-'))
         add_info("เรื่อง:", data.get('requestSubject') or data.get('requestMessage', 'ไม่มีรายละเอียด'))
         
