@@ -1,7 +1,7 @@
-import http
 import tkinter as tk
 from tkinter import messagebox
 import requests
+from app_config import build_api_url
 
 class ForgotPasswordPage(tk.Frame):
     def __init__(self, parent, controller):
@@ -41,7 +41,7 @@ class ForgotPasswordPage(tk.Frame):
 
     def handle_send_code(self):
         email = self.email_entry.get()
-        backend_url = "http://localhost:5000/srs/user/request-otp" # เช็ค IP/Port ให้ดี
+        backend_url = build_api_url("/srs/user/request-otp")
         response = None 
 
         try:
