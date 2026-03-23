@@ -4,6 +4,7 @@ import requests
 from PIL import Image, ImageTk, ImageDraw, ImageOps
 from io import BytesIO
 import json
+from app_config import API_BASE_URL
 
 class SignaturePage(tk.Frame):
     def __init__(self, parent, controller):
@@ -17,7 +18,7 @@ class SignaturePage(tk.Frame):
     }
         
         # --- Data State ---
-        self.backend_url = "http://localhost:5000"
+        self.backend_url = API_BASE_URL
         self.current_doc = None
         self.current_request = None
         self.orig_img = None  
