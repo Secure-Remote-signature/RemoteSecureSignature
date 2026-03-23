@@ -56,6 +56,10 @@ async function initializeDatabase() {
          requestStatus TEXT DEFAULT 'Pending',
          signatureArea TEXT,
          signatureCoordinates TEXT,
+         cncDispatchedAt DATETIME,
+         cncCompletedAt DATETIME,
+         cncAttempts INTEGER DEFAULT 0,
+         cncLastError TEXT,
          createdAt DATETIME,
          updatedAt DATETIME,
          claimedAt DATETIME,
@@ -68,6 +72,7 @@ async function initializeDatabase() {
 
     await db.exec("CREATE INDEX IF NOT EXISTS idx_request_owner_status ON requestSign(ownerRequestID, requestStatus, requestId DESC)");
     await db.exec("CREATE INDEX IF NOT EXISTS idx_request_status_date ON requestSign(requestStatus, requestDate DESC)");
+    await db.exec("CREATE INDEX IF NOT EXISTS idx_request_cnc_queue ON requestSign(requestStatus, cncDispatchedAt, cncCompletedAt, requestId ASC)");
 
     const facultyCheck = await db.get("SELECT COUNT(*) as count FROM faculties");
     if (facultyCheck.count === 0) {
