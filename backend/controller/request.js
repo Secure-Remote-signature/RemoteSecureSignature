@@ -378,6 +378,164 @@ const getHistoryByProfessor = async (req, res) => {
     }
 };
 
+const claimNextCncTask = async (req, res) => {
+    let db;
+    try {
+        const { ownerRequestID, machineId } = req.body || {};
+
+        db = await open({ filename: "./database/remote.db", driver: sqlite3.Database });
+        await db.exec("BEGIN IMMEDIATE TRANSACTION");
+
+        const where = [
+            "r.requestStatus = ?",
+            "r.signatureCoordinates IS NOT NULL",
+            "TRIM(r.signatureCoordinates) <> ''",
+            "r.cncCompletedAt IS NULL",
+            "r.cncDispatchedAt IS NULL"
+        ];
+        const params = [REQUEST_STATUS.SIGNING];
+
+        if (ownerRequestID) {
+            where.unshift("r.ownerRequestID = ?");
+            params.unshift(ownerRequestID);
+        }
+
+        const next = await db.get(
+            `SELECT r.requestId
+             FROM requestSign r
+             WHERE ${where.join(" AND ")}
+             ORDER BY COALESCE(r.startedAt, r.updatedAt, r.requestDate) ASC, r.requestId ASC
+             LIMIT 1`,
+            params
+        );
+
+        if (!next) {
+            await db.exec("COMMIT");
+            await db.close();
+            return res.json(null);
+        }
+
+        const dispatchAt = nowIso();
+        const claim = await db.run(
+            `UPDATE requestSign
+             SET cncDispatchedAt = ?,
+                 cncAttempts = COALESCE(cncAttempts, 0) + 1,
+                 cncLastError = NULL,
+                 updatedAt = ?,
+                 stateVersion = COALESCE(stateVersion, 0) + 1
+             WHERE requestId = ? AND cncDispatchedAt IS NULL AND cncCompletedAt IS NULL`,
+            [dispatchAt, dispatchAt, next.requestId]
+        );
+
+        if (!claim || claim.changes === 0) {
+            await db.exec("ROLLBACK");
+            await db.close();
+            return res.status(409).json({ error: "Task already claimed" });
+        }
+
+        const task = await db.get(
+            `SELECT r.requestId, r.requestNumber, r.requestSubject, r.requestMessage,
+                    r.requestPicture, r.signatureCoordinates, r.ownerRequestID,
+                    r.clientRequestID, r.requestRTSP, r.requestStatus,
+                    r.cncDispatchedAt, r.cncAttempts,
+                    u.userName as studentName, u.userLastname as studentLastName
+             FROM requestSign r
+             LEFT JOIN users u ON r.clientRequestID = u.userId
+             WHERE r.requestId = ?`,
+            [next.requestId]
+        );
+
+        await db.exec("COMMIT");
+        await db.close();
+
+        res.json({ task, machineId: machineId || null });
+    } catch (error) {
+        console.error("Error in claimNextCncTask:", error);
+        try {
+            if (db) {
+                await db.exec("ROLLBACK");
+                await db.close();
+            }
+        } catch {
+            // ignore rollback cleanup errors
+        }
+        res.status(500).json({ error: "DB Error" });
+    }
+};
+
+const reportCncTaskResult = async (req, res) => {
+    let db;
+    try {
+        const { requestId, success, errorMessage } = req.body || {};
+        if (!requestId || typeof success !== "boolean") {
+            return res.status(400).json({ error: "requestId and success(boolean) are required" });
+        }
+
+        db = await open({ filename: "./database/remote.db", driver: sqlite3.Database });
+        const row = await db.get(
+            "SELECT requestStatus, cncCompletedAt FROM requestSign WHERE requestId = ?",
+            [requestId]
+        );
+
+        if (!row) {
+            await db.close();
+            return res.status(404).json({ error: "Request not found" });
+        }
+
+        if (success && row.cncCompletedAt) {
+            await db.close();
+            return res.json({ message: "Task already completed" });
+        }
+
+        if (success) {
+            const doneAt = nowIso();
+            await db.run(
+                `UPDATE requestSign
+                 SET cncCompletedAt = ?,
+                     cncLastError = NULL,
+                     updatedAt = ?,
+                     stateVersion = COALESCE(stateVersion, 0) + 1
+                 WHERE requestId = ?`,
+                [doneAt, doneAt, requestId]
+            );
+
+            if (row.requestStatus !== REQUEST_STATUS.SIGNED) {
+                const transition = await transitionStatus(db, requestId, REQUEST_STATUS.SIGNED);
+                if (!transition.ok) {
+                    await db.close();
+                    return res.status(transition.code || 409).json({ error: transition.error || "Failed to finalize request" });
+                }
+            }
+
+            await db.close();
+            return res.json({ message: "CNC task completed" });
+        }
+
+        await db.run(
+            `UPDATE requestSign
+             SET cncLastError = ?,
+                 cncDispatchedAt = NULL,
+                 updatedAt = ?,
+                 stateVersion = COALESCE(stateVersion, 0) + 1
+             WHERE requestId = ?`,
+            [errorMessage || "CNC execution failed", nowIso(), requestId]
+        );
+        await db.close();
+
+        return res.json({ message: "CNC task failure recorded; task is available for retry" });
+    } catch (error) {
+        console.error("Error in reportCncTaskResult:", error);
+        try {
+            if (db) {
+                await db.close();
+            }
+        } catch {
+            // ignore close errors
+        }
+        return res.status(500).json({ error: "DB Error" });
+    }
+};
+
 export default { 
     submitRequest, 
     getPendingForProfessor, 
@@ -387,5 +545,7 @@ export default {
     getRequestState,
     transitionRequest,
     claimNextRequest,
-    getHistoryByProfessor
+    getHistoryByProfessor,
+    claimNextCncTask,
+    reportCncTaskResult
 };
