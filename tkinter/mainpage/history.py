@@ -122,7 +122,7 @@ class HistoryPage(tk.Frame):
             sender = f"{sender_name} {sender_last}".strip()
             log = {
                 "id": f"REQ-{row.get('requestId')}",
-                "docName": row.get("requestMessage") or row.get("requestNumber") or "-",
+                "docName": row.get("requestSubject") or row.get("requestMessage") or row.get("requestNumber") or "-",
                 "sender": sender or "-",
                 "date": self._format_date(row.get("requestDate")),
                 "status": self._status_to_ui(row.get("requestStatus")),
