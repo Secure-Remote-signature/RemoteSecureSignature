@@ -1,5 +1,8 @@
 import tkinter as tk
 from tkinter import messagebox
+from datetime import datetime
+import requests
+from app_config import build_api_url
 
 class HistoryPage(tk.Frame):
     def __init__(self, parent, controller):
@@ -55,19 +58,64 @@ class HistoryPage(tk.Frame):
         self.canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
-        self.load_history_from_web_spec()
+        self.load_history_from_backend()
 
-    def load_history_from_web_spec(self):
-        mock_logs = [
-            { 'id': 'srs-001', 'docName': 'เอกสารอนุมัติจบการศึกษา', 'sender': 'สมหญิง ใจดี', 'date': '25/02/26 14:30', 'status': 'success' },
-            { 'id': 'srs-002', 'docName': 'ใบขอเบิกงบประมาณโครงการ', 'sender': 'ฝ่ายการเงิน', 'date': '25/02/26 10:15', 'status': 'success' },
-            { 'id': 'srs-003', 'docName': 'หนังสือขออนุญาตใช้สถานที่', 'sender': 'สมชาย รักเรียน', 'date': '24/02/26 16:45', 'status': 'failed' },
-            { 'id': 'srs-004', 'docName': 'สัญญาจ้างผู้รับเหมา CNC', 'sender': 'ฝ่ายจัดซื้อ', 'date': '24/02/26 09:00', 'status': 'processing' },
-            { 'id': 'srs-005', 'docName': 'แบบฟอร์มขอลาพักร้อน', 'sender': 'มานะ อดทน', 'date': '23/02/26 11:20', 'status': 'success' },
-            { 'id': 'srs-006', 'docName': 'บันทึกข้อความภายใน', 'sender': 'ธุรการ', 'date': '22/02/26 08:30', 'status': 'success' },
-        ]
-        
-        for log in mock_logs:
+    def _format_date(self, iso_text):
+        if not iso_text:
+            return "-"
+        try:
+            dt = datetime.fromisoformat(str(iso_text).replace("Z", "+00:00"))
+            return dt.strftime("%d/%m/%y %H:%M")
+        except Exception:
+            return str(iso_text)
+
+    def _status_to_ui(self, status):
+        status_lc = str(status or "").strip().lower()
+        if status_lc == "signed":
+            return "success"
+        if status_lc == "rejected":
+            return "failed"
+        return "processing"
+
+    def load_history_from_backend(self):
+        for widget in self.scrollable_frame.winfo_children():
+            widget.destroy()
+
+        prof_id = getattr(self.controller, "current_user_id", None)
+        if not prof_id:
+            empty_lbl = tk.Label(self.scrollable_frame, text="ไม่พบข้อมูลผู้ใช้", bg="#F9FAFB", fg="#64748B", font=("Arial", 12))
+            empty_lbl.pack(pady=30)
+            return
+
+        try:
+            url = build_api_url(f"/srs/request/history/{prof_id}?limit=100")
+            response = requests.get(url, timeout=5)
+            if response.status_code != 200:
+                raise Exception(f"HTTP {response.status_code}")
+
+            rows = response.json() or []
+        except Exception as e:
+            messagebox.showerror("Error", f"โหลดประวัติไม่สำเร็จ: {e}")
+            rows = []
+
+        if not rows:
+            empty_lbl = tk.Label(self.scrollable_frame, text="ยังไม่มีประวัติการลงนาม", bg="#F9FAFB", fg="#64748B", font=("Arial", 12))
+            empty_lbl.pack(pady=30)
+            return
+
+        for row in rows:
+            sender_name = (row.get("studentName") or "-").strip()
+            sender_last = (row.get("studentLastName") or "").strip()
+            sender = f"{sender_name} {sender_last}".strip()
+            log = {
+                "id": f"REQ-{row.get('requestId')}",
+                "docName": row.get("requestMessage") or row.get("requestNumber") or "-",
+                "sender": sender or "-",
+                "date": self._format_date(row.get("requestDate")),
+                "status": self._status_to_ui(row.get("requestStatus")),
+                "rawStatus": row.get("requestStatus") or "-"
+            }
+
             # สร้างตัวแผ่น Card (เพิ่ม pady เพื่อให้เห็นช่องว่างระหว่างแถวชัดขึ้น)
             item_frame = tk.Frame(self.scrollable_frame, bg="#FFFFFF", bd=0, 
                                   highlightthickness=1, highlightbackground="#E2E8F0")
@@ -106,5 +154,5 @@ class HistoryPage(tk.Frame):
         else: return {'bg': '#FEF3C7', 'fg': '#92400E'}
 
     def view_log_detail(self, log):
-        detail_msg = f"ID: {log['id']}\nDocument: {log['docName']}\nSender: {log['sender']}\nDate: {log['date']}\nStatus: {log['status']}"
+        detail_msg = f"ID: {log['id']}\nDocument: {log['docName']}\nSender: {log['sender']}\nDate: {log['date']}\nStatus: {log.get('rawStatus', log['status'])}"
         messagebox.showinfo("Log Detail", detail_msg)
