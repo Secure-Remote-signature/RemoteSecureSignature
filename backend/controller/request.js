@@ -109,7 +109,8 @@ const submitRequest = async (req, res) => {
             const params = [
                 docId,
                 new Date().toISOString(),
-                message || subject,
+                subject || null,
+                message || "",
                 rtsp || camera || "none",
                 fileName,
                 ownerId,
@@ -122,11 +123,11 @@ const submitRequest = async (req, res) => {
 
             const lifecycleSql = `
                 INSERT INTO requestSign (
-                    requestNumber, requestDate, requestMessage,
+                    requestNumber, requestDate, requestSubject, requestMessage,
                     requestRTSP, requestPicture, ownerRequestID,
                     clientRequestID, requestStatus, signatureArea,
                     createdAt, updatedAt
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `;
 
             const result = await db.run(lifecycleSql, params);
@@ -339,6 +340,7 @@ const getHistoryByProfessor = async (req, res) => {
             SELECT
                 r.requestId,
                 r.requestNumber,
+                r.requestSubject,
                 r.requestMessage,
                 r.requestDate,
                 r.requestStatus,
