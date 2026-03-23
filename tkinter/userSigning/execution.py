@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 import requests
+from app_config import build_api_url
 
 class ExecutionPage(tk.Frame):
     def __init__(self, parent, controller):
@@ -122,17 +123,35 @@ class ExecutionPage(tk.Frame):
                 messagebox.showwarning("Warning", "ไม่พบข้อมูลงานลงนาม", parent=self.winfo_toplevel())
                 return
 
+            request_id = self.current_request.get('requestId')
+            if not request_id:
+                messagebox.showwarning("Warning", "ไม่พบ requestId ของคำร้อง จึงไม่สามารถเริ่ม CNC ได้", parent=self.winfo_toplevel())
+                return
+
             if not self.signature_points:
                 messagebox.showwarning("Warning", "ไม่พบพิกัดลายเซ็น กรุณากลับไปยืนยันจากหน้า Preview", parent=self.winfo_toplevel())
                 return
 
             if not self.sign_command_sent:
+                try:
+                    start_res = requests.put(
+                        build_api_url(f"/srs/request/update-status/{request_id}"),
+                        json={"status": "Signing"},
+                        timeout=5
+                    )
+                    if start_res.status_code not in (200, 409):
+                        messagebox.showerror("Error", f"เปลี่ยนสถานะเป็น Signing ไม่สำเร็จ (HTTP {start_res.status_code})", parent=self.winfo_toplevel())
+                        return
+                except Exception as e:
+                    messagebox.showerror("Error", f"เปลี่ยนสถานะเป็น Signing ไม่สำเร็จ: {e}", parent=self.winfo_toplevel())
+                    return
+
                 payload = {
-                    "requestId": self.current_request.get('requestId'),
+                    "requestId": request_id,
                     "points_px": self.signature_points
                 }
                 try:
-                    res = requests.post("http://localhost:5000/srs/request/confirm-signature", json=payload, timeout=8)
+                    res = requests.post(build_api_url("/srs/request/confirm-signature"), json=payload, timeout=8)
                     if res.status_code != 200:
                         messagebox.showerror("Error", f"ส่งคำสั่งลงนามไม่สำเร็จ (HTTP {res.status_code})", parent=self.winfo_toplevel())
                         return
@@ -145,8 +164,6 @@ class ExecutionPage(tk.Frame):
             self.progress['value'] = 0
             self.run_progress()
         finally:
-            # If we returned early (before run_progress started) ensure running flag and button reset
-            # run_progress will clear running_signing and re-enable the button when finishing normally
             if self.progress['value'] == 0 and not self.sign_command_sent:
                 self.running_signing = False
                 if hasattr(self, 'start_btn'):
@@ -169,6 +186,10 @@ class ExecutionPage(tk.Frame):
                     pass
                 messagebox.showinfo("Success", "CNC Signing Completed!", parent=self.winfo_toplevel())
             finally:
+                # clear completed request state to avoid sending the same request twice
+                self.current_request = {}
+                self.signature_points = []
+                self.sign_command_sent = False
                 # allow starting again
                 self.running_signing = False
                 if hasattr(self, 'start_btn'):
@@ -180,7 +201,7 @@ class ExecutionPage(tk.Frame):
     def reject_this_request(self):
         if messagebox.askyesno("ยืนยัน", "คุณต้องการปฏิเสธคำร้องนี้ใช่หรือไม่?", parent=self.winfo_toplevel()):
             req_id = self.current_request.get('requestId')
-            url = f"http://localhost:5000/srs/request/update-status/{req_id}"
+            url = build_api_url(f"/srs/request/update-status/{req_id}")
             try:
                 requests.put(url, json={"status": "Rejected"})
                 self.controller.show_frame("DashboardPage")
