@@ -91,6 +91,9 @@ class MainApp(tk.Tk):
                 
             if page_name == "SettingPage" and hasattr(frame, "load_user_data"):
                 frame.load_user_data()  # Load user data when opening settings
+
+            if page_name == "HistoryPage" and hasattr(frame, "load_history_from_backend"):
+                frame.load_history_from_backend()
                 
             frame.tkraise()
         else:
