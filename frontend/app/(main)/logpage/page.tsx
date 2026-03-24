@@ -17,6 +17,7 @@ type HistoryRow = {
   requestRTSP: string | null;
   requestPicture: string | null;
   signatureCoordinates: string | null;
+  rejectReason: string | null;
   ownerName: string | null;
   ownerLastName: string | null;
   createdAt: string | null;
@@ -45,6 +46,7 @@ type LogItem = {
   stateVersion: string;
   requestPicture: string | null;
   signatureCoordinates: string | null;
+  rejectReason: string;
 };
 
 function mapStatusToUi(status?: string): UiStatus {
@@ -113,6 +115,7 @@ export default function HistoryLogPage() {
             stateVersion: row.stateVersion !== null && row.stateVersion !== undefined ? String(row.stateVersion) : '-',
             requestPicture: row.requestPicture || null,
             signatureCoordinates: row.signatureCoordinates || null,
+            rejectReason: (row.rejectReason || '').trim(),
           };
         });
 
@@ -306,6 +309,9 @@ export default function HistoryLogPage() {
           <div className="px-4 py-2.5 border-b bg-slate-50 text-xs pi:text-sm text-slate-700 leading-6">
             <div>เลขเอกสาร: <span className="font-semibold">{log.requestNumber}</span> | ผู้ลงนาม: <span className="font-semibold">{log.ownerName}</span> | ผู้ส่ง: <span className="font-semibold">{log.sender}</span></div>
             <div>สร้าง: {log.createdAt} | เริ่มเซ็น: {log.startedAt} | เซ็นเสร็จ: {log.completedAt} | RTSP: {log.requestRTSP} | version: {log.stateVersion}</div>
+            {log.status === 'failed' && (
+              <div className="text-red-700">เหตุผลที่ปฏิเสธ: <span className="font-semibold">{log.rejectReason || '-'}</span></div>
+            )}
           </div>
 
           <div className="flex-1 overflow-auto bg-slate-900/95 p-4">
@@ -345,7 +351,7 @@ export default function HistoryLogPage() {
             placeholder="ค้นหาเอกสาร..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="pi:text-[16px] 2xl:text-[20px] block w-full pi:pl-8 pi:py-2 2xl:pl-12 2xl:pr-4 2xl:py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-[#4F46E5] focus:border-[#4F46E5] outline-none transition-all text-gray-900 placeholder:text-gray-400 bg-gray-50"
+            className="pi:text-[16px] 2xl:text-[20px] block w-full pl-10 pi:pl-8 pi:py-2 2xl:pl-12 2xl:pr-4 2xl:py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-[#4F46E5] focus:border-[#4F46E5] outline-none transition-all text-gray-900 placeholder:text-gray-400 bg-gray-50"
           />
         </div>
       </div>
@@ -397,8 +403,11 @@ export default function HistoryLogPage() {
                   <td className="px-3 py-3 text-gray-500 pi:text-[16px] 2xl:text-[20px] whitespace-nowrap">
                     {log.date}
                   </td>
-                  <td className="px-6 py-3 flex justify-center">
-                    {renderStatusBadge(log.status)}
+                  <td className="px-6 py-3">
+                    <div className="flex flex-col items-center gap-1">
+                      {renderStatusBadge(log.status)}
+                      {log.status === 'failed'}
+                    </div>
                   </td>
                   <td className="px-3 py-3 text-center">
                     <button 
