@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import messagebox
 import requests
 import json
 from datetime import datetime
@@ -25,9 +25,25 @@ class ExecutionPage(tk.Frame):
         self.paper_width = 0
         self.paper_height = 0
         self.sign_command_sent = False
+        self.running_signing = False
+        self._signing_progress_value = 0
 
         self.setup_ui()
         self.setup_canvas_events()
+
+    def set_machine_status(self, status):
+        status_lc = str(status or "").strip().lower()
+        status_map = {
+            "idle": ("● MACHINE IDLE", "#94A3B8"),
+            "ready": ("● MACHINE READY", "#10B981"),
+            "executing": ("● MACHINE EXECUTING", "#F59E0B"),
+            "finished": ("● MACHINE FINISHED", "#10B981"),
+            "halted": ("● MACHINE HALTED", "#EF4444"),
+            "error": ("● MACHINE ERROR", "#EF4444"),
+        }
+        text, color = status_map.get(status_lc, ("● MACHINE UNKNOWN", "#94A3B8"))
+        if hasattr(self, "status_lbl"):
+            self.status_lbl.config(text=text, fg=color)
 
     def _extract_paper_size(self):
         width = self.paper_width
@@ -127,7 +143,7 @@ class ExecutionPage(tk.Frame):
         top_bar.pack(side="top", fill="x")
         top_bar.pack_propagate(False)
         
-        self.status_lbl = tk.Label(top_bar, text="● SYSTEM READY...", font=("Arial", 14, "bold"), 
+        self.status_lbl = tk.Label(top_bar, text="● MACHINE READY", font=("Arial", 14, "bold"), 
         bg="#1E293B", fg="#10B981")
         self.status_lbl.pack(side="left", padx=20, pady=15)
 
@@ -160,13 +176,7 @@ class ExecutionPage(tk.Frame):
         tk.Button(btn_frame, text="CANCEL", bg="#EF4444", fg="white", font=("Arial", 10, "bold"), padx=12, pady=8,
             command=self.cancel_action).pack(side="left", padx=6, fill="x", expand=True)
 
-        # --- 4. Progress Area ---
-        bottom_frame = tk.Frame(main_container, bg="#0F172A", height=54)
-        bottom_frame.pack(side="bottom", fill="x", padx=6, pady=(0, 4))
-        bottom_frame.pack_propagate(False)
-
-        self.progress = ttk.Progressbar(bottom_frame, orient="horizontal", length=100, mode="determinate")
-        self.progress.pack(side="left", fill="x", expand=True, padx=12, pady=10)
+        self.set_machine_status("ready")
 
     # --- ระบบภาพกล้อง (Execution Monitor) ---
     def setup_canvas_events(self):
@@ -200,8 +210,13 @@ class ExecutionPage(tk.Frame):
 
         self.sign_command_sent = False
         self.running_signing = False
+        self._signing_progress_value = 0
         print(f"Execution Page: ได้รับ data request - {self.current_request}")
         self.refresh_camera_view()
+        if self.current_request:
+            self.set_machine_status("ready")
+        else:
+            self.set_machine_status("idle")
   
     def cleanup_modals(self):
         if self.sim_win:
@@ -254,11 +269,11 @@ class ExecutionPage(tk.Frame):
 
                 self.sign_command_sent = True
 
-            self.status_lbl.config(text="● EXECUTING CNC...", fg="#F59E0B")
-            self.progress['value'] = 0
+            self.set_machine_status("executing")
+            self._signing_progress_value = 0
             self.run_progress()
         finally:
-            if self.progress['value'] == 0 and not self.sign_command_sent:
+            if self._signing_progress_value == 0 and not self.sign_command_sent:
                 self.running_signing = False
                 if hasattr(self, 'start_btn'):
                     try:
@@ -267,11 +282,11 @@ class ExecutionPage(tk.Frame):
                         pass
 
     def run_progress(self):
-        if self.progress['value'] < 100:
-            self.progress['value'] += 5
+        if self._signing_progress_value < 100:
+            self._signing_progress_value += 5
             self.after(100, self.run_progress)
         else:
-            self.status_lbl.config(text="● FINISHED", fg="#10B981")
+            self.set_machine_status("finished")
             request_id = self.current_request.get('requestId') if self.current_request else None
             if request_id:
                 try:
@@ -289,6 +304,7 @@ class ExecutionPage(tk.Frame):
                 self.signature_points = []
                 self.sign_command_sent = False
                 self.running_signing = False
+                self._signing_progress_value = 0
                 if hasattr(self, 'start_btn'):
                     try:
                         self.start_btn.config(state="normal")
@@ -315,11 +331,11 @@ class ExecutionPage(tk.Frame):
                 messagebox.showerror("Error", "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้", parent=self.winfo_toplevel())
                 return
 
-        self.status_lbl.config(text="● HALTED", fg="#EF4444")
+        self.set_machine_status("halted")
         self.show_camera_placeholder("หยุดฉุกเฉินแล้ว - โปรดตรวจสอบเครื่อง CNC")
         self.running_signing = False
         self.sign_command_sent = False
-        self.progress['value'] = 0
+        self._signing_progress_value = 0
         if hasattr(self, 'start_btn'):
             try:
                 self.start_btn.config(state="normal")
