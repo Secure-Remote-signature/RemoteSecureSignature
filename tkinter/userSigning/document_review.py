@@ -7,6 +7,7 @@ import requests
 from PIL import Image, ImageTk, ImageOps
 
 from app_config import API_BASE_URL, build_api_url
+from userSigning.reject_reason import prompt_reject_reason
 
 
 class DocumentReviewPage(tk.Frame):
@@ -187,6 +188,10 @@ class DocumentReviewPage(tk.Frame):
         if not messagebox.askyesno("ยืนยัน", "คุณต้องการปฏิเสธคำร้องนี้ใช่หรือไม่?"):
             return
 
+        reason = prompt_reject_reason(self.winfo_toplevel())
+        if reason is None:
+            return
+
         req_id = self.current_request.get("requestId")
         if not req_id:
             messagebox.showerror("Error", "ไม่พบ requestId")
@@ -195,7 +200,7 @@ class DocumentReviewPage(tk.Frame):
         try:
             res = requests.put(
                 build_api_url(f"/srs/request/update-status/{req_id}"),
-                json={"status": "Rejected"},
+                json={"status": "Rejected", "rejectReason": reason},
                 timeout=5,
             )
             if res.status_code == 200:
