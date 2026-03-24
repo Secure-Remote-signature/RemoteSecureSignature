@@ -51,7 +51,7 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
-CNC_WS_URL = os.getenv("TK_CNC_WS_URL", "ws://localhost:8765").strip()
+CNC_WS_URL = os.getenv("TK_CNC_WS_URL", "ws://192.168.1.117:8765/srs/payload").strip()
 CNC_WS_SEND_TIMEOUT_SEC = _env_float("TK_CNC_WS_SEND_TIMEOUT_SEC", 5.0)
 CNC_WS_ACK_TIMEOUT_SEC = _env_float("TK_CNC_WS_ACK_TIMEOUT_SEC", 8.0)
 CNC_WS_ACK_REQUIRED = _env_bool("TK_CNC_WS_ACK_REQUIRED", True)
