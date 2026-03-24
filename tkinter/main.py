@@ -7,6 +7,7 @@ from mainpage.setting import SettingPage
 from mainpage.history import HistoryPage
 from userSigning.pin_confirm import PinConfirmPage
 from userSigning.execution import ExecutionPage
+from userSigning.document_review import DocumentReviewPage
 from userLogin.forgot_password import ForgotPasswordPage
 from userLogin.reset_password import ResetPasswordPage
 from userLogin.change_password import ChangePasswordPage
@@ -37,6 +38,7 @@ class MainApp(tk.Tk):
             LoginPage, 
             DashboardPage, 
             SignaturePage, 
+            DocumentReviewPage,
             SettingPage, 
             HistoryPage, 
             PinConfirmPage,
