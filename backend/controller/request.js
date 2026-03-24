@@ -149,7 +149,7 @@ const getPendingForProfessor = async (req, res) => {
         const { profId } = req.params;
         const db = await open({ filename: "./database/remote.db", driver: sqlite3.Database });
         const request = await db.get(
-            "SELECT r.*, u.userName as studentName FROM requestSign r JOIN users u ON r.clientRequestID = u.userId WHERE r.ownerRequestID = ? AND r.requestStatus = 'Pending' ORDER BY r.requestId DESC LIMIT 1",
+            "SELECT r.*, u.userName as studentName, u.userLastname as studentLastName FROM requestSign r JOIN users u ON r.clientRequestID = u.userId WHERE r.ownerRequestID = ? AND r.requestStatus = 'Pending' ORDER BY r.requestId DESC LIMIT 1",
             [profId]
         );
         await db.close();
@@ -307,7 +307,7 @@ const claimNextRequest = async (req, res) => {
         }
 
         const claimed = await db.get(
-            "SELECT r.*, u.userName as studentName FROM requestSign r JOIN users u ON r.clientRequestID = u.userId WHERE r.requestId = ?",
+            "SELECT r.*, u.userName as studentName, u.userLastname as studentLastName FROM requestSign r JOIN users u ON r.clientRequestID = u.userId WHERE r.requestId = ?",
             [next.requestId]
         );
 
