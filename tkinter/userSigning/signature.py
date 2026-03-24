@@ -24,6 +24,7 @@ class SignaturePage(tk.Frame):
         self.orig_img = None  
         self.paths = []       
         self.zoom_level = 1.0
+        self.base_fit_zoom = 1.0
         self.signature_area = None
 
         self.setup_ui()
@@ -79,6 +80,23 @@ class SignaturePage(tk.Frame):
         self.right_canvas.bind("<B1-Motion>", self.draw)
         self.left_canvas.bind("<Button-1>", lambda e: self.left_canvas.scan_mark(e.x, e.y))
         self.left_canvas.bind("<B1-Motion>", lambda e: self.left_canvas.scan_dragto(e.x, e.y, gain=1))
+        self.left_canvas.bind("<Configure>", self.on_left_canvas_resize)
+
+    def update_base_fit_zoom(self):
+        if not self.orig_img:
+            self.base_fit_zoom = 1.0
+            return
+
+        canvas_w = max(1, self.left_canvas.winfo_width())
+        canvas_h = max(1, self.left_canvas.winfo_height())
+        img_w, img_h = self.orig_img.size
+        fit_zoom = min(canvas_w / max(1, img_w), canvas_h / max(1, img_h))
+        self.base_fit_zoom = max(0.01, fit_zoom)
+
+    def on_left_canvas_resize(self, _event):
+        if self.orig_img:
+            self.update_base_fit_zoom()
+            self.render_left_canvas()
 
     # --- Logic Methods (Refactored from your original code) ---
     def fetch_doc(self):
@@ -131,6 +149,7 @@ class SignaturePage(tk.Frame):
 
             self.signature_area = raw_area or {"x": 200, "y": 1200, "width": 400, "height": 200}
             self.zoom_level = 1.0
+            self.update_base_fit_zoom()
             self.render_left_canvas()
         except Exception as e:
             messagebox.showerror("Error", f"โหลดเอกสารไม่สำเร็จ: {e}")
@@ -138,7 +157,8 @@ class SignaturePage(tk.Frame):
     def render_left_canvas(self):
         if not self.orig_img: return
         w, h = self.orig_img.size
-        new_size = (int(w * self.zoom_level), int(h * self.zoom_level))
+        effective_zoom = self.base_fit_zoom * self.zoom_level
+        new_size = (max(1, int(w * effective_zoom)), max(1, int(h * effective_zoom)))
         resized = self.orig_img.resize(new_size, Image.Resampling.LANCZOS)
         self.tk_left_img = ImageTk.PhotoImage(resized)
         
@@ -146,13 +166,13 @@ class SignaturePage(tk.Frame):
         self.left_canvas.create_image(0, 0, image=self.tk_left_img, anchor=tk.NW)
         self.left_canvas.config(scrollregion=(0, 0, new_size[0], new_size[1]))
         if self.signature_area:
-            x = self.signature_area["x"] * self.zoom_level
-            y = self.signature_area["y"] * self.zoom_level
-            sw = self.signature_area["width"] * self.zoom_level
-            sh = self.signature_area["height"] * self.zoom_level
+            x = self.signature_area["x"] * effective_zoom
+            y = self.signature_area["y"] * effective_zoom
+            sw = self.signature_area["width"] * effective_zoom
+            sh = self.signature_area["height"] * effective_zoom
             self.left_canvas.create_rectangle(x, y, x + sw, y + sh, outline="#EF4444", width=3, dash=(6, 4))
             self.left_canvas.create_text(x, y - 10, text="ตำแหน่งลายเซ็น", fill="#EF4444", anchor="sw")
-        self.zoom_lbl.config(text=f"{int(self.zoom_level * 100)}%")
+        self.zoom_lbl.config(text=f"{int(effective_zoom * 100)}%")
 
     def adjust_zoom(self, delta):
         self.zoom_level = max(0.1, self.zoom_level + delta)
@@ -238,8 +258,13 @@ class SignaturePage(tk.Frame):
 
     def confirm_preview(self, sim_win, mapped_points):
         sim_win.destroy()
+        paper_width, paper_height = (0, 0)
+        if self.orig_img:
+            paper_width, paper_height = self.orig_img.size
         payload = {
             "request": self.current_request,
-            "points_px": mapped_points
+            "points_px": mapped_points,
+            "paper_width": paper_width,
+            "paper_height": paper_height
         }
         self.controller.show_frame("PinConfirmPage", data=payload)
