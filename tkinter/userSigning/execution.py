@@ -1,11 +1,18 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 import requests
-import os
-import re
 import json
 from datetime import datetime
-from app_config import build_api_url
+import time
+from websocket import create_connection
+from app_config import (
+    build_api_url,
+    CNC_WS_URL,
+    CNC_WS_SEND_TIMEOUT_SEC,
+    CNC_WS_ACK_TIMEOUT_SEC,
+    CNC_WS_ACK_REQUIRED,
+    CNC_WS_RETRY,
+)
 
 class ExecutionPage(tk.Frame):
     def __init__(self, parent, controller):
@@ -14,20 +21,40 @@ class ExecutionPage(tk.Frame):
         self.current_request = {} 
         self.sim_win = None
         self.signature_points = []
+        self.paper_width = 0
+        self.paper_height = 0
         self.sign_command_sent = False
 
         self.setup_ui()
         self.setup_canvas_events()
 
-    def _save_signature_task_file(self, request_id):
-        # Save coordinates as a CNC-ready task file, keyed by request id.
-        safe_id = re.sub(r"[^A-Za-z0-9_-]", "_", str(request_id))
-        task_dir = os.path.join(os.path.dirname(__file__), "signature_tasks")
-        os.makedirs(task_dir, exist_ok=True)
+    def _extract_paper_size(self):
+        width = self.paper_width
+        height = self.paper_height
 
-        payload = {
+        if not width or not height:
+            width = self.current_request.get("paper_width") if self.current_request else 0
+            height = self.current_request.get("paper_height") if self.current_request else 0
+
+        try:
+            width = float(width)
+        except Exception:
+            width = 0
+        try:
+            height = float(height)
+        except Exception:
+            height = 0
+
+        return width, height
+
+    def _build_signature_task_payload(self, request_id):
+        width, height = self._extract_paper_size()
+
+        return {
             "requestId": request_id,
             "generatedAt": datetime.utcnow().isoformat() + "Z",
+            "width": width,
+            "height": height,
             "points_px": self.signature_points,
             "requestMeta": {
                 "requestRTSP": self.current_request.get("requestRTSP"),
@@ -36,11 +63,62 @@ class ExecutionPage(tk.Frame):
             },
         }
 
-        file_path = os.path.join(task_dir, f"signatureTask_{safe_id}.json")
-        with open(file_path, "w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False, indent=2)
+    def _send_payload_to_cnc_ws(self, task_payload):
 
-        return file_path
+        if not CNC_WS_URL:
+            raise RuntimeError("ยังไม่ได้ตั้งค่า TK_CNC_WS_URL สำหรับเครื่อง CNC")
+
+        envelope = {
+            "type": "signature_task",
+            "sentAt": datetime.utcnow().isoformat() + "Z",
+            "data": task_payload,
+        }
+        payload_json = json.dumps(envelope, ensure_ascii=False)
+
+        last_error = None
+        for attempt in range(1, CNC_WS_RETRY + 1):
+            ws = None
+            try:
+                ws = create_connection(CNC_WS_URL, timeout=CNC_WS_SEND_TIMEOUT_SEC)
+                ws.settimeout(CNC_WS_ACK_TIMEOUT_SEC)
+                ws.send(payload_json)
+
+                if CNC_WS_ACK_REQUIRED:
+                    ack_raw = ws.recv()
+                    ack = json.loads(ack_raw)
+                    ack_type = str(ack.get("type", "")).lower()
+                    ack_request_id = ack.get("requestId")
+                    if ack_type != "ack":
+                        raise RuntimeError(f"ACK ไม่ถูกต้อง: {ack_raw}")
+                    if ack_request_id not in (None, task_payload.get("requestId")):
+                        raise RuntimeError(f"ACK requestId ไม่ตรง: {ack_raw}")
+
+                return
+            except Exception as exc:
+                last_error = exc
+                if attempt < CNC_WS_RETRY:
+                    time.sleep(0.5)
+            finally:
+                if ws is not None:
+                    try:
+                        ws.close()
+                    except Exception:
+                        pass
+
+        raise RuntimeError(f"ส่ง payload ไป CNC ผ่าน WebSocket ไม่สำเร็จ: {last_error}")
+
+    def _update_request_status(self, request_id, status):
+        try:
+            res = requests.put(
+                build_api_url(f"/srs/request/update-status/{request_id}"),
+                json={"status": status},
+                timeout=5
+            )
+        except Exception as exc:
+            raise RuntimeError(f"อัปเดตสถานะเป็น {status} ไม่สำเร็จ: {exc}")
+
+        if res.status_code not in (200, 409):
+            raise RuntimeError(f"อัปเดตสถานะเป็น {status} ไม่สำเร็จ (HTTP {res.status_code})")
 
     def setup_ui(self):
         # --- 1. Top Status Bar ---
@@ -117,9 +195,13 @@ class ExecutionPage(tk.Frame):
         if data and "request" in data:
             self.current_request = data.get("request") or {}
             self.signature_points = data.get("points_px") or []
+            self.paper_width = data.get("paper_width") or 0
+            self.paper_height = data.get("paper_height") or 0
         else:
             self.current_request = data or {}
             self.signature_points = (data or {}).get("points_px") or []
+            self.paper_width = (data or {}).get("paper_width") or 0
+            self.paper_height = (data or {}).get("paper_height") or 0
 
         self.sign_command_sent = False
         self.running_signing = False
@@ -161,39 +243,21 @@ class ExecutionPage(tk.Frame):
                 return
 
             try:
-                task_file = self._save_signature_task_file(request_id)
-                print(f"Execution Page: บันทึกไฟล์พิกัดลายเซ็นแล้ว -> {task_file}")
+                task_payload = self._build_signature_task_payload(request_id)
+                self._send_payload_to_cnc_ws(task_payload)
+                print(f"Execution Page: ส่ง payload ไป CNC ผ่าน WebSocket แล้ว (requestId={request_id})")
             except Exception as e:
-                messagebox.showerror("Error", f"บันทึกไฟล์พิกัดลายเซ็นไม่สำเร็จ: {e}", parent=self.winfo_toplevel())
+                messagebox.showerror("Error", f"ส่ง payload ไป CNC ไม่สำเร็จ: {e}", parent=self.winfo_toplevel())
                 return
 
             if not self.sign_command_sent:
                 try:
-                    start_res = requests.put(
-                        build_api_url(f"/srs/request/update-status/{request_id}"),
-                        json={"status": "Signing"},
-                        timeout=5
-                    )
-                    if start_res.status_code not in (200, 409):
-                        messagebox.showerror("Error", f"เปลี่ยนสถานะเป็น Signing ไม่สำเร็จ (HTTP {start_res.status_code})", parent=self.winfo_toplevel())
-                        return
+                    self._update_request_status(request_id, "Signing")
                 except Exception as e:
-                    messagebox.showerror("Error", f"เปลี่ยนสถานะเป็น Signing ไม่สำเร็จ: {e}", parent=self.winfo_toplevel())
+                    messagebox.showerror("Error", str(e), parent=self.winfo_toplevel())
                     return
 
-                payload = {
-                    "requestId": request_id,
-                    "points_px": self.signature_points
-                }
-                try:
-                    res = requests.post(build_api_url("/srs/request/confirm-signature"), json=payload, timeout=8)
-                    if res.status_code != 200:
-                        messagebox.showerror("Error", f"ส่งคำสั่งลงนามไม่สำเร็จ (HTTP {res.status_code})", parent=self.winfo_toplevel())
-                        return
-                    self.sign_command_sent = True
-                except Exception as e:
-                    messagebox.showerror("Error", f"ส่งคำสั่งลงนามไม่สำเร็จ: {e}", parent=self.winfo_toplevel())
-                    return
+                self.sign_command_sent = True
 
             self.status_lbl.config(text="● EXECUTING CNC...", fg="#F59E0B")
             self.progress['value'] = 0
@@ -213,6 +277,12 @@ class ExecutionPage(tk.Frame):
             self.after(100, self.run_progress)
         else:
             self.status_lbl.config(text="● FINISHED", fg="#10B981")
+            request_id = self.current_request.get('requestId') if self.current_request else None
+            if request_id:
+                try:
+                    self._update_request_status(request_id, "Signed")
+                except Exception as exc:
+                    messagebox.showwarning("Warning", str(exc), parent=self.winfo_toplevel())
             try:
                 try:
                     self.cleanup_modals()
