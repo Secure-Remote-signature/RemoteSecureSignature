@@ -2,10 +2,10 @@ import tkinter as tk
 from tkinter import ttk
 
 class IncomingAlert(tk.Toplevel):
-    def __init__(self, parent, data, on_accept, on_reject):
+    def __init__(self, parent, data, on_accept, on_reject, on_view=None):
         super().__init__(parent)
         self.title("New Request")
-        self.geometry("450x420+500+200") # เพิ่มความสูงเล็กน้อย
+        self.geometry("450x420+500+200")
         self.overrideredirect(True)
         self.attributes("-topmost", True)
         self.configure(bg="#FFFFFF")
@@ -13,12 +13,13 @@ class IncomingAlert(tk.Toplevel):
         # Store callbacks
         self.on_accept = on_accept
         self.on_reject = on_reject
+        self.on_view = on_view if on_view is not None else on_accept
 
         # --- Header ---
         header = tk.Frame(self, bg="#5D5CDE", height=50)
         header.pack(fill="x")
         tk.Label(header, text="มีเอกสารรอการลงนาม!!", font=("Arial", 14, "bold"), 
-                 bg="#5D5CDE", fg="white").pack(pady=10)
+            bg="#5D5CDE", fg="white").pack(pady=10)
 
         # --- Content Container ---
         content = tk.Frame(self, bg="#FFFFFF", padx=20, pady=15)
@@ -54,11 +55,11 @@ class IncomingAlert(tk.Toplevel):
         btn_frame = tk.Frame(content, bg="#FFFFFF")
         btn_frame.pack(fill="x", pady=10)
         tk.Button(btn_frame, text="ลงนามเอกสาร", bg="#5D5CDE", fg="white", font=("Arial", 11, "bold"),
-                  relief="flat", width=18, pady=8, cursor="hand2",
-                  command=self._on_accept_click).pack(side="left", expand=True, padx=5)
+            relief="flat", width=18, pady=8, cursor="hand2",
+            command=self._on_accept_click).pack(side="left", expand=True, padx=5)
         tk.Button(btn_frame, text="ปฏิเสธ", bg="#E11D48", fg="white", font=("Arial", 11, "bold"),
-                  relief="flat", width=18, pady=8, cursor="hand2",
-                  command=self._on_reject_click).pack(side="left", expand=True, padx=5)
+            relief="flat", width=18, pady=8, cursor="hand2",
+            command=self._on_reject_click).pack(side="left", expand=True, padx=5)
     
     def _on_accept_click(self):
         self.destroy()
@@ -70,4 +71,4 @@ class IncomingAlert(tk.Toplevel):
     
     def _on_view_click(self, event):
         self.destroy()
-        self.on_accept()
+        self.on_view()
