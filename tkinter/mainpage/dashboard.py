@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 import requests
 from userSigning.alert import IncomingAlert
+from userSigning.reject_reason import prompt_reject_reason
 from app_config import build_api_url
 
 class DashboardPage(tk.Frame):
@@ -121,9 +122,13 @@ class DashboardPage(tk.Frame):
     def handle_reject(self, data):
         req_id = data.get('requestId')
         api_url = build_api_url(f"/srs/request/update-status/{req_id}")
+
+        reason = prompt_reject_reason(self.winfo_toplevel())
+        if reason is None:
+            return
         
         try:
-            res = requests.put(api_url, json={"status": "Rejected"}, timeout=3)
+            res = requests.put(api_url, json={"status": "Rejected", "rejectReason": reason}, timeout=3)
             if res.status_code == 200:
                 messagebox.showinfo("สำเร็จ", "ปฏิเสธคำร้องแล้ว")
             else:
