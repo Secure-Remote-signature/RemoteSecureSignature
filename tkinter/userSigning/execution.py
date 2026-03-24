@@ -27,6 +27,7 @@ class ExecutionPage(tk.Frame):
         self.sign_command_sent = False
         self.running_signing = False
         self._signing_progress_value = 0
+        self._start_locked_for_request = False
 
         self.setup_ui()
         self.setup_canvas_events()
@@ -44,6 +45,16 @@ class ExecutionPage(tk.Frame):
         text, color = status_map.get(status_lc, ("● MACHINE UNKNOWN", "#94A3B8"))
         if hasattr(self, "status_lbl"):
             self.status_lbl.config(text=text, fg=color)
+
+    def _lock_start_button_for_request(self):
+        self._start_locked_for_request = True
+        if hasattr(self, "start_btn"):
+            self.start_btn.config(state="disabled", bg="#6B7280", activebackground="#6B7280", fg="#E5E7EB")
+
+    def _unlock_start_button_for_new_request(self):
+        self._start_locked_for_request = False
+        if hasattr(self, "start_btn"):
+            self.start_btn.config(state="normal", bg="#10B981", activebackground="#10B981", fg="white")
 
     def _extract_paper_size(self):
         width = self.paper_width
@@ -177,6 +188,7 @@ class ExecutionPage(tk.Frame):
             command=self.cancel_action).pack(side="left", padx=6, fill="x", expand=True)
 
         self.set_machine_status("ready")
+        self._unlock_start_button_for_new_request()
 
     # --- ระบบภาพกล้อง (Execution Monitor) ---
     def setup_canvas_events(self):
@@ -211,6 +223,7 @@ class ExecutionPage(tk.Frame):
         self.sign_command_sent = False
         self.running_signing = False
         self._signing_progress_value = 0
+        self._unlock_start_button_for_new_request()
         print(f"Execution Page: ได้รับ data request - {self.current_request}")
         self.refresh_camera_view()
         if self.current_request:
@@ -227,6 +240,9 @@ class ExecutionPage(tk.Frame):
                 pass
 
     def start_signing(self):
+        if self._start_locked_for_request:
+            return
+
         if self.running_signing:
             return
 
@@ -268,6 +284,7 @@ class ExecutionPage(tk.Frame):
                     return
 
                 self.sign_command_sent = True
+                self._lock_start_button_for_request()
 
             self.set_machine_status("executing")
             self._signing_progress_value = 0
@@ -275,11 +292,6 @@ class ExecutionPage(tk.Frame):
         finally:
             if self._signing_progress_value == 0 and not self.sign_command_sent:
                 self.running_signing = False
-                if hasattr(self, 'start_btn'):
-                    try:
-                        self.start_btn.config(state="normal")
-                    except:
-                        pass
 
     def run_progress(self):
         if self._signing_progress_value < 100:
@@ -305,11 +317,6 @@ class ExecutionPage(tk.Frame):
                 self.sign_command_sent = False
                 self.running_signing = False
                 self._signing_progress_value = 0
-                if hasattr(self, 'start_btn'):
-                    try:
-                        self.start_btn.config(state="normal")
-                    except:
-                        pass
             
     def cancel_action(self):
         if not messagebox.askyesno("ยืนยัน", "ยกเลิกงานนี้และปฏิเสธคำร้องใช่หรือไม่?", parent=self.winfo_toplevel()):
@@ -336,9 +343,4 @@ class ExecutionPage(tk.Frame):
         self.running_signing = False
         self.sign_command_sent = False
         self._signing_progress_value = 0
-        if hasattr(self, 'start_btn'):
-            try:
-                self.start_btn.config(state="normal")
-            except:
-                pass
         self.controller.show_frame("DashboardPage")
