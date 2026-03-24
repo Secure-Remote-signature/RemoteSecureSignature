@@ -30,7 +30,7 @@ function nowIso() {
     return new Date().toISOString();
 }
 
-function buildTransitionPatch(toStatus, actorId = null) {
+function buildTransitionPatch(toStatus, actorId = null, rejectReason = null) {
     const updates = [
         "requestStatus = ?",
         "updatedAt = ?",
@@ -57,10 +57,15 @@ function buildTransitionPatch(toStatus, actorId = null) {
         params.push(nowIso());
     }
 
+    if (toStatus === REQUEST_STATUS.REJECTED) {
+        updates.push("rejectReason = ?");
+        params.push(rejectReason || null);
+    }
+
     return { updates, params };
 }
 
-async function transitionStatus(db, requestId, toStatus, expectedStatus = null, actorId = null) {
+async function transitionStatus(db, requestId, toStatus, expectedStatus = null, actorId = null, rejectReason = null) {
     const current = await db.get("SELECT requestStatus FROM requestSign WHERE requestId = ?", [requestId]);
     if (!current) {
         return { ok: false, code: 404, error: "Request not found" };
@@ -79,7 +84,7 @@ async function transitionStatus(db, requestId, toStatus, expectedStatus = null, 
         return { ok: false, code: 409, error: `Invalid transition ${current.requestStatus} -> ${toStatus}` };
     }
 
-    const patch = buildTransitionPatch(toStatus, actorId);
+    const patch = buildTransitionPatch(toStatus, actorId, rejectReason);
     const sql = `UPDATE requestSign SET ${patch.updates.join(", ")} WHERE requestId = ?`;
     const result = await db.run(sql, [...patch.params, requestId]);
     if (!result || result.changes === 0) {
@@ -163,11 +168,11 @@ const getPendingForProfessor = async (req, res) => {
 const updateStatus = async (req, res) => {
     try {
         const { id } = req.params;
-        const { status, expectedStatus, actorId } = req.body;
+        const { status, expectedStatus, actorId, rejectReason } = req.body;
         console.log(`📩 Received Update: ID=${id}, Status=${status}`); // เพิ่มไว้เช็ค
         const db = await open({ filename: "./database/remote.db", driver: sqlite3.Database });
 
-        const transition = await transitionStatus(db, id, status, expectedStatus || null, actorId || null);
+        const transition = await transitionStatus(db, id, status, expectedStatus || null, actorId || null, rejectReason || null);
         await db.close();
 
         if (transition.ok) {
@@ -254,13 +259,13 @@ const getRequestState = async (req, res) => {
 const transitionRequest = async (req, res) => {
     try {
         const { id } = req.params;
-        const { toStatus, expectedStatus, actorId } = req.body;
+        const { toStatus, expectedStatus, actorId, rejectReason } = req.body;
         if (!toStatus) {
             return res.status(400).json({ error: "toStatus is required" });
         }
 
         const db = await open({ filename: "./database/remote.db", driver: sqlite3.Database });
-        const transition = await transitionStatus(db, id, toStatus, expectedStatus || null, actorId || null);
+        const transition = await transitionStatus(db, id, toStatus, expectedStatus || null, actorId || null, rejectReason || null);
         await db.close();
 
         if (!transition.ok) {
@@ -346,6 +351,7 @@ const getHistoryByProfessor = async (req, res) => {
                 r.requestStatus,
                 r.requestRTSP,
                 r.requestPicture,
+                r.rejectReason,
                 r.signatureCoordinates,
                 r.ownerRequestID,
                 r.clientRequestID,
