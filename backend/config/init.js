@@ -60,6 +60,7 @@ async function initializeDatabase() {
          cncCompletedAt DATETIME,
          cncAttempts INTEGER DEFAULT 0,
          cncLastError TEXT,
+         rejectReason TEXT,
          createdAt DATETIME,
          updatedAt DATETIME,
          claimedAt DATETIME,
