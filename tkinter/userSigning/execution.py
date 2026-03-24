@@ -5,6 +5,7 @@ import json
 from datetime import datetime
 import time
 from websocket import create_connection
+from userSigning.reject_reason import prompt_reject_reason
 from app_config import (
     build_api_url,
     CNC_WS_URL,
@@ -157,10 +158,7 @@ class ExecutionPage(tk.Frame):
         self.start_btn.pack(side="left", padx=6, fill="x", expand=True)
         
         tk.Button(btn_frame, text="CANCEL", bg="#EF4444", fg="white", font=("Arial", 10, "bold"), padx=12, pady=8,
-            command=lambda: self.controller.show_frame("DashboardPage")).pack(side="left", padx=6, fill="x", expand=True)
-
-        tk.Button(btn_frame, text="ปฏิเสธการลงนาม", bg="#EF4444", fg="white", font=("Arial", 10, "bold"),
-            padx=12, pady=8, command=self.reject_this_request).pack(side="left", padx=6, fill="x", expand=True)
+            command=self.cancel_action).pack(side="left", padx=6, fill="x", expand=True)
 
         # --- 4. Progress Area ---
         bottom_frame = tk.Frame(main_container, bg="#0F172A", height=54)
@@ -168,10 +166,7 @@ class ExecutionPage(tk.Frame):
         bottom_frame.pack_propagate(False)
 
         self.progress = ttk.Progressbar(bottom_frame, orient="horizontal", length=100, mode="determinate")
-        self.progress.pack(side="left", fill="x", expand=True, padx=(12, 8), pady=10)
-
-        tk.Button(bottom_frame, text="EMERGENCY STOP", bg="#EF4444", fg="white", font=("Arial", 9, "bold"),
-            command=self.emergency_stop).pack(side="right", padx=(4, 10), pady=8)
+        self.progress.pack(side="left", fill="x", expand=True, padx=12, pady=10)
 
     # --- ระบบภาพกล้อง (Execution Monitor) ---
     def setup_canvas_events(self):
@@ -300,24 +295,34 @@ class ExecutionPage(tk.Frame):
                     except:
                         pass
             
-    def reject_this_request(self):
-        if messagebox.askyesno("ยืนยัน", "คุณต้องการปฏิเสธคำร้องนี้ใช่หรือไม่?", parent=self.winfo_toplevel()):
-            req_id = self.current_request.get('requestId')
-            url = build_api_url(f"/srs/request/update-status/{req_id}")
-            try:
-                requests.put(url, json={"status": "Rejected"})
-                self.controller.show_frame("DashboardPage")
-            except:
-                messagebox.showerror("Error", "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้", parent=self.winfo_toplevel())
+    def cancel_action(self):
+        if not messagebox.askyesno("ยืนยัน", "ยกเลิกงานนี้และปฏิเสธคำร้องใช่หรือไม่?", parent=self.winfo_toplevel()):
+            return
 
-    def emergency_stop(self):
+        reason = prompt_reject_reason(self.winfo_toplevel())
+        if reason is None:
+            return
+
+        req_id = self.current_request.get('requestId') if self.current_request else None
+        if req_id:
+            try:
+                requests.put(
+                    build_api_url(f"/srs/request/update-status/{req_id}"),
+                    json={"status": "Rejected", "rejectReason": reason},
+                    timeout=5,
+                )
+            except Exception:
+                messagebox.showerror("Error", "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้", parent=self.winfo_toplevel())
+                return
+
         self.status_lbl.config(text="● HALTED", fg="#EF4444")
         self.show_camera_placeholder("หยุดฉุกเฉินแล้ว - โปรดตรวจสอบเครื่อง CNC")
-        # stop any running signing process and re-enable start button
         self.running_signing = False
+        self.sign_command_sent = False
+        self.progress['value'] = 0
         if hasattr(self, 'start_btn'):
             try:
                 self.start_btn.config(state="normal")
             except:
                 pass
-        messagebox.showwarning("Emergency", "CNC Machine Stopped!", parent=self.winfo_toplevel())
+        self.controller.show_frame("DashboardPage")
