@@ -136,7 +136,8 @@ class HistoryPage(tk.Frame):
                 "startedAt": self._format_date(row.get("startedAt")),
                 "completedAt": self._format_date(row.get("completedAt")),
                 "stateVersion": row.get("stateVersion") if row.get("stateVersion") is not None else "-",
-                "ownerName": f"{(row.get('ownerName') or '').strip()} {(row.get('ownerLastName') or '').strip()}".strip() or "-"
+                "ownerName": f"{(row.get('ownerName') or '').strip()} {(row.get('ownerLastName') or '').strip()}".strip() or "-",
+                "rejectReason": (row.get("rejectReason") or "").strip(),
             }
 
             item_frame = tk.Frame(self.scrollable_frame, bg="#FFFFFF", bd=0, 
@@ -275,6 +276,8 @@ class HistoryPage(tk.Frame):
             f"สร้าง: {log.get('createdAt', '-')} | เริ่มเซ็น: {log.get('startedAt', '-')} | "
             f"เซ็นเสร็จ: {log.get('completedAt', '-')} | RTSP: {log.get('requestRTSP', '-') }"
         )
+        if str(log.get("rawStatus", "")).strip().lower() == "rejected":
+            meta_text += f"\nเหตุผลที่ปฏิเสธ: {log.get('rejectReason') or '-'}"
         tk.Label(control, text=meta_text, bg="#111827", fg="#CBD5E1", font=("Arial", 9), justify="left", anchor="w").pack(side="left", padx=(12, 6), pady=8)
 
         zoom_label = tk.Label(control, text="100%", bg="#111827", fg="#E2E8F0", font=("Arial", 10, "bold"))
