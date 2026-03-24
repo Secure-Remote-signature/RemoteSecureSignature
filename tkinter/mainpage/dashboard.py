@@ -111,7 +111,8 @@ class DashboardPage(tk.Frame):
             self, 
             data=data, 
             on_accept=lambda: self.controller.show_frame("SignaturePage", data=data),
-            on_reject=lambda: self.handle_reject(data)
+            on_reject=lambda: self.handle_reject(data),
+            on_view=lambda: self.controller.show_frame("DocumentReviewPage", data=data)
         ) 
 
     def accept_action(self, data):
