@@ -96,12 +96,12 @@ class ExecutionPage(tk.Frame):
         if not CNC_WS_URL:
             raise RuntimeError("ยังไม่ได้ตั้งค่า TK_CNC_WS_URL สำหรับเครื่อง CNC")
 
-        envelope = {
-            "type": "signature_task",
-            "sentAt": datetime.utcnow().isoformat() + "Z",
-            "data": task_payload,
-        }
-        payload_json = json.dumps(envelope, ensure_ascii=False)
+        # envelope = {
+        #     "type": "signature_task",
+        #     "sentAt": datetime.utcnow().isoformat() + "Z",
+        #     "data": task_payload,
+        # }
+        payload_json = json.dumps(task_payload, ensure_ascii=False)
 
         last_error = None
         for attempt in range(1, CNC_WS_RETRY + 1):
@@ -246,7 +246,6 @@ class ExecutionPage(tk.Frame):
         if self.running_signing:
             return
 
-        # mark as running and disable the start button to avoid rapid re-entry
         self.running_signing = True
         try:
             if hasattr(self, 'start_btn'):
