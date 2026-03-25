@@ -1,13 +1,13 @@
 import tkinter as tk
 from tkinter import messagebox
+import requests
+from app_config import build_api_url
 
 class PinConfirmPage(tk.Frame):
     def __init__(self, parent, controller):
-        # Background: #F9FAFB
         super().__init__(parent, bg="#F9FAFB")
         self.controller = controller
         self.pin_code = "" 
-        self.correct_pin = "123456"
         self.pending_payload = None
         
         container = tk.Frame(self, bg="#FFFFFF", bd=0, highlightthickness=1, highlightbackground="#E5E7EB")
@@ -78,7 +78,29 @@ class PinConfirmPage(tk.Frame):
         self.dots_label.config(text=display.strip())
 
     def verify_pin(self):
-        if self.pin_code == self.correct_pin:
+        if len(self.pin_code) != 6:
+            messagebox.showwarning("Warning", "กรุณากรอก PIN ให้ครบ 6 หลัก")
+            return
+
+        user_id = getattr(self.controller, "current_user_id", None)
+        if not user_id:
+            messagebox.showerror("Error", "ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่")
+            self.pin_code = ""
+            self.update_dots()
+            self.controller.show_frame("LoginPage")
+            return
+
+        try:
+            res = requests.post(
+                build_api_url("/srs/user/verify-pin"),
+                json={"userId": user_id, "userPin": self.pin_code},
+                timeout=5,
+            )
+        except Exception as exc:
+            messagebox.showerror("Connection Error", f"ไม่สามารถตรวจสอบ PIN กับเซิร์ฟเวอร์ได้: {exc}")
+            return
+
+        if res.status_code == 200:
             self.pin_code = ""
             self.update_dots()
             if not self.pending_payload:
@@ -88,11 +110,17 @@ class PinConfirmPage(tk.Frame):
             payload = self.pending_payload
             self.pending_payload = None
             self.controller.show_frame("ExecutionPage", data=payload)
+            return
+
+        if res.status_code == 401:
+            messagebox.showerror("Invalid PIN", "PIN ไม่ถูกต้อง")
+        elif res.status_code == 404:
+            messagebox.showerror("Error", "ไม่พบผู้ใช้งานในระบบ")
         else:
-            # Failed
-            messagebox.showerror("Invalid PIN", "The PIN you entered is incorrect.")
-            self.pin_code = ""
-            self.update_dots()
+            messagebox.showerror("Error", f"ตรวจสอบ PIN ไม่สำเร็จ (HTTP {res.status_code})")
+
+        self.pin_code = ""
+        self.update_dots()
 
     def set_request_data(self, data):
         self.pending_payload = data or None
