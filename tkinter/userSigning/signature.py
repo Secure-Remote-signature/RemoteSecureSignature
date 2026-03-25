@@ -120,7 +120,13 @@ class SignaturePage(tk.Frame):
             messagebox.showerror("Error", f"เชื่อมต่อ backend ไม่สำเร็จ: {e}")
 
     def set_request_data(self, data):
+        # Always reset previous drawing/doc state when a new request arrives.
+        self.clear_sign()
         self.current_request = data
+        self.signature_area = None
+        self.zoom_level = 1.0
+        self.orig_img = None
+        self.left_canvas.delete("all")
         self.load_doc_from_request(data)
 
     def load_doc_from_request(self, data):
