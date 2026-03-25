@@ -17,7 +17,7 @@ export default function MainLayout({
       
       {/* ส่วนหัว (Header) */}
       <header className="w-full bg-white relative z-30">
-        <MainNavbar onMenuClick={() => setIsSidebarOpen(true)} />
+        <MainNavbar onMenuClick={() => setIsSidebarOpen(true)} userName="User" userLastName="Name" />
       </header>
 
       {/* แถบเมนู (Sidebar) */}

@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import messagebox
 
 import requests
+from app_config import build_api_url
 
 class SettingPage(tk.Frame):
     def __init__(self, parent, controller):
@@ -72,7 +73,7 @@ class SettingPage(tk.Frame):
 
     def load_user_data(self):
         user_id = self.controller.current_user_id 
-        api_url = f"http://localhost:5000/srs/user/profile/{user_id}"
+        api_url = build_api_url(f"/srs/user/profile/{user_id}")
 
         try:
             response = requests.get(api_url, timeout=5)
@@ -97,7 +98,7 @@ class SettingPage(tk.Frame):
                 
                 # Read-only fields
                 self.set_entry_text(self.position_entry, data.get('userRole'))
-                self.set_entry_text(self.faculty_entry, data.get('userDepname'))
+                self.set_entry_text(self.faculty_entry, data.get('userfacultyName'))
                 self.set_entry_text(self.email_entry, data.get('userEmail'))
                 
                 print("Data loaded successfully!")
@@ -128,7 +129,7 @@ class SettingPage(tk.Frame):
 
     def save_settings(self):
         user_id = self.controller.current_user_id
-        api_url = f"http://localhost:5000/srs/user/updateuser/{user_id}"
+        api_url = build_api_url(f"/srs/user/updateuser/{user_id}")
 
         payload = {
             "userName": self.first_name_entry.get(),
@@ -149,7 +150,7 @@ class SettingPage(tk.Frame):
     def delete_account(self):
         if messagebox.askyesno("ยืนยัน", "คุณต้องการลบบัญชีนี้ใช่หรือไม่? ข้อมูลทั้งหมดจะหายไป!"):
             user_id = self.controller.current_user_id
-            api_url = f"http://localhost:5000/srs/user/deluser/{user_id}"
+            api_url = build_api_url(f"/srs/user/deluser/{user_id}")
 
             try:
                 response = requests.delete(api_url, timeout=5)

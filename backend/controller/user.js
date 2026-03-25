@@ -10,10 +10,10 @@ let otpStore = {};
 const createUser = async (req, res) => {
   try {
     const { userName, userLastname, userEmail, userPassword, userRole, 
-            userPhone, userDepId, userDepname } = req.body;
+            userPhone, userfacultyId, userPin } = req.body;
 
     if (!userName || !userLastname || !userEmail || !userPassword 
-        || !userRole || !userPhone || !userDepId || !userDepname) {
+        || !userRole || !userPhone || !userfacultyId || !userPin) {
       return res.status(400).json({ error: "All fields are required!" });
     }
 
@@ -25,7 +25,7 @@ const createUser = async (req, res) => {
     const userDate = new Date().toISOString();
     const result = await db.run(
       `
-      INSERT INTO users (userName, userLastname, userDate, userEmail, userPassword, userRole, userPhone, userDepId, userDepname)
+      INSERT INTO users (userName, userLastname, userDate, userEmail, userPassword, userRole, userPhone, userfacultyId, userPin)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
       [
@@ -36,8 +36,8 @@ const createUser = async (req, res) => {
         userPassword,
         userRole,
         userPhone,
-        userDepId,
-        userDepname,
+        userfacultyId,
+        userPin
       ],
     );
 
@@ -73,7 +73,8 @@ const loginUser = async (req, res) => {
       res.status(200).json({
         message: "Login successful!",
         userId: user.userId,
-        full_name: user.userName,
+        name: user.userName,
+        lastName: user.userLastname,
         role: user.userRole,
         token: "fake-jwt-token",
       });
@@ -85,6 +86,40 @@ const loginUser = async (req, res) => {
       res.status(500).json({ error: "Internal server error" });
     }
   };
+
+const verifyUserPin = async (req, res) => {
+  try {
+    const { userId, userPin } = req.body;
+
+    if (!userId || !userPin) {
+      return res.status(400).json({ error: "userId and userPin are required" });
+    }
+
+    const db = await open({
+      filename: "./database/remote.db",
+      driver: sqlite3Verbose.Database,
+    });
+
+    const user = await db.get(
+      "SELECT userPin FROM users WHERE userId = ?",
+      [userId]
+    );
+    await db.close();
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    if (String(user.userPin) !== String(userPin)) {
+      return res.status(401).json({ error: "Invalid PIN" });
+    }
+
+    return res.status(200).json({ message: "PIN verified" });
+  } catch (error) {
+    console.error("Verify PIN Error:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+};
     
 
 
@@ -188,9 +223,18 @@ const getUserProfile = async (req, res) => {
     const db = await open({ 
       filename: "./database/remote.db", 
       driver: sqlite3Verbose.Database });
-    
+
     const user = await db.get(
-      "SELECT * FROM users WHERE userId = ?", [id]);
+      `
+      SELECT
+        u.*, 
+        f.facultyName as userfacultyName
+      FROM users u
+      LEFT JOIN faculties f ON u.userfacultyId = f.facultyId
+      WHERE u.userId = ?
+      `,
+      [id]
+    );
     await db.close();
 
     if (user) {
@@ -328,14 +372,53 @@ const verifyOTP = async (req, res) => {
     }
 };
 
+const getFaculties = async (req, res) => {
+  try {
+    const db = await open({ 
+      filename: "./database/remote.db", 
+      driver: sqlite3Verbose.Database 
+    });
+
+    const faculties = await db.all("SELECT * FROM faculties ORDER BY facultyName ASC");
+    
+    await db.close();
+    res.status(200).json(faculties);
+  } catch (error) {
+    console.error("Error fetching faculties:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+export const getAllStaff = async (req, res) => {
+    try {
+        const db = await open({ 
+            filename: "./database/remote.db", 
+            driver: sqlite3Verbose.Database 
+        });
+
+        const staffs = await db.all(
+            "SELECT userId, userName, userLastname FROM users WHERE userRole IN ('admin', 'staff', 'professor')"
+        );
+        
+        await db.close();
+        res.status(200).json(staffs);
+    } catch (error) {
+        console.error("Error fetching staff:", error);
+        res.status(500).json({ error: "Internal server error" });
+    }
+};
+
 
 export default {
   createUser,
   loginUser,
+  verifyUserPin,
   deluser,
   updateUser,
   getUserProfile,
   changePassword,
   requestOTP,
   verifyOTP,
+  getFaculties,
+  getAllStaff
 };

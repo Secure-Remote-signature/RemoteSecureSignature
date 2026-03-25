@@ -11,7 +11,21 @@ async function initializeDatabase() {
       driver: sqlite3Verbose.Database,
     });
 
+    const forceReset = String(process.env.FORCE_DB_RESET || "").toLowerCase() === "true";
+
     console.log("Connected to SQLite database.");
+
+    if (forceReset) {
+      console.warn("FORCE_DB_RESET=true -> dropping requestSign table");
+      await db.exec("DROP TABLE IF EXISTS requestSign");
+    }
+
+    await db.exec(`
+       CREATE TABLE IF NOT EXISTS faculties (
+         facultyId INTEGER PRIMARY KEY AUTOINCREMENT,
+         facultyName TEXT NOT NULL UNIQUE
+       );
+    `);
 
     await db.exec(`
        CREATE TABLE IF NOT EXISTS users (
@@ -19,28 +33,63 @@ async function initializeDatabase() {
         userName TEXT,
         userLastname TEXT,
         userDate TEXT,
-        userEmail email UNIQUE,
+        userEmail TEXT UNIQUE,
         userPassword TEXT,
         userRole TEXT,
         userPhone TEXT,
-        userDepId TEXT,
-        userDepname TEXT
+        userfacultyId INTEGER,
+        userPin TEXT,
+        FOREIGN KEY (userfacultyId) REFERENCES faculties(facultyId)
+       );`
       );
-     `);
     await db.exec(`
        CREATE TABLE IF NOT EXISTS requestSign (
          requestId INTEGER PRIMARY KEY AUTOINCREMENT,
          requestNumber TEXT NOT NULL,
          requestDate DATETIME NOT NULL,
+         requestSubject TEXT,
          requestMessage TEXT NOT NULL,
          requestRTSP TEXT NOT NULL,
          requestPicture TEXT NOT NULL,
          ownerRequestID INTEGER NOT NULL,
          clientRequestID INTEGER NOT NULL,
          requestStatus TEXT DEFAULT 'Pending',
-         signatureCoordinates TEXT
+         signatureArea TEXT,
+         signatureCoordinates TEXT,
+         cncDispatchedAt DATETIME,
+         cncCompletedAt DATETIME,
+         cncAttempts INTEGER DEFAULT 0,
+         cncLastError TEXT,
+         rejectReason TEXT,
+         createdAt DATETIME,
+         updatedAt DATETIME,
+         claimedAt DATETIME,
+         startedAt DATETIME,
+         completedAt DATETIME,
+         claimedBy INTEGER,
+         stateVersion INTEGER DEFAULT 0
        );
      `);
+
+    await db.exec("CREATE INDEX IF NOT EXISTS idx_request_owner_status ON requestSign(ownerRequestID, requestStatus, requestId DESC)");
+    await db.exec("CREATE INDEX IF NOT EXISTS idx_request_status_date ON requestSign(requestStatus, requestDate DESC)");
+    await db.exec("CREATE INDEX IF NOT EXISTS idx_request_cnc_queue ON requestSign(requestStatus, cncDispatchedAt, cncCompletedAt, requestId ASC)");
+
+    const facultyCheck = await db.get("SELECT COUNT(*) as count FROM faculties");
+    if (facultyCheck.count === 0) {
+      const defaultFaculties = [
+        "คณะวิศวกรรมศาสตร์",
+        "คณะวิทยาศาสตร์",
+        "คณะวิทยาการจัดการ",
+        "คณะเศรษฐศาสตร์",
+        "คณะพาณิชยนาวีนานาชาติ"
+      ];
+
+      for (const name of defaultFaculties) {
+        await db.run("INSERT INTO faculties (facultyName) VALUES (?)", [name]);
+      }
+      console.log("Default faculties seeded!");
+    }
 
     console.log("Database initialized successfully!");
     await db.close();

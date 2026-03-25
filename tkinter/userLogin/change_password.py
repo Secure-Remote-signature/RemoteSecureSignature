@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import messagebox
 import requests
+from app_config import build_api_url
 
 class ChangePasswordPage(tk.Frame):
     def __init__(self, parent, controller):
@@ -50,7 +51,7 @@ class ChangePasswordPage(tk.Frame):
 
         # 2. Backend API Call
         user_id = self.controller.current_user_id
-        api_url = f"http://localhost:5000/srs/user/change-password/{user_id}"
+        api_url = build_api_url(f"/srs/user/change-password/{user_id}")
         payload = {
             "oldPassword": old_p,
             "newPassword": new_p
