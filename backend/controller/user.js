@@ -86,6 +86,40 @@ const loginUser = async (req, res) => {
       res.status(500).json({ error: "Internal server error" });
     }
   };
+
+const verifyUserPin = async (req, res) => {
+  try {
+    const { userId, userPin } = req.body;
+
+    if (!userId || !userPin) {
+      return res.status(400).json({ error: "userId and userPin are required" });
+    }
+
+    const db = await open({
+      filename: "./database/remote.db",
+      driver: sqlite3Verbose.Database,
+    });
+
+    const user = await db.get(
+      "SELECT userPin FROM users WHERE userId = ?",
+      [userId]
+    );
+    await db.close();
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    if (String(user.userPin) !== String(userPin)) {
+      return res.status(401).json({ error: "Invalid PIN" });
+    }
+
+    return res.status(200).json({ message: "PIN verified" });
+  } catch (error) {
+    console.error("Verify PIN Error:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+};
     
 
 
@@ -378,6 +412,7 @@ export const getAllStaff = async (req, res) => {
 export default {
   createUser,
   loginUser,
+  verifyUserPin,
   deluser,
   updateUser,
   getUserProfile,
