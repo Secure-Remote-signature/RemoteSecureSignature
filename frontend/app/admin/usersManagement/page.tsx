@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useMemo, useState } from 'react';
 import api, { isAxiosError } from '@/app/lib/api';
+import { subscribeRealtime } from '@/app/lib/realtime';
 
 interface User {
   userId: number;
@@ -147,6 +148,23 @@ export default function AdminUsersPage() {
     }, 30000);
 
     return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = subscribeRealtime((event) => {
+      if (event.type !== "audit-log.created") return;
+
+      const action = String((event.payload as { action?: string } | undefined)?.action || "").toUpperCase();
+      if (
+        action.startsWith("ACCOUNT_") ||
+        action === "LOGIN" ||
+        action === "LOGOUT"
+      ) {
+        void loadUsers();
+      }
+    });
+
+    return unsubscribe;
   }, []);
 
   const filteredUsers = useMemo(() => {
