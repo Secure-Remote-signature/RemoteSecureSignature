@@ -3,6 +3,7 @@ import sqlite3 from "sqlite3";
 import nodemailer from "nodemailer";
 import 'dotenv/config';
 import jwt from "jsonwebtoken";
+import bcrypt from "bcryptjs";
 import { getClientIp, writeActivityLog } from "../lib/activityLog.js";
 
 const sqlite3Verbose = sqlite3.verbose();
@@ -13,8 +14,30 @@ const OTP_TTL_MS = 5 * 60 * 1000;
 const OTP_COOLDOWN_MS = 60 * 1000;
 const OTP_MAX_ATTEMPTS = 5;
 const OTP_LOCK_MS = 10 * 60 * 1000;
+const BCRYPT_ROUNDS = Number(process.env.BCRYPT_ROUNDS || 10);
 
 let otpStore = {}; 
+
+function isBcryptHash(value) {
+  return /^\$2[aby]\$\d{2}\$/.test(String(value || ""));
+}
+
+async function hashSecret(raw) {
+  return bcrypt.hash(String(raw), BCRYPT_ROUNDS);
+}
+
+async function verifySecret(storedValue, inputRaw) {
+  const stored = String(storedValue || "");
+  const input = String(inputRaw || "");
+  if (!stored) return false;
+
+  if (isBcryptHash(stored)) {
+    return bcrypt.compare(input, stored);
+  }
+
+  // Legacy plaintext fallback. This keeps old rows working until migrated.
+  return stored === input;
+}
 
 function otpSeconds(ms) {
   return Math.max(1, Math.ceil(ms / 1000));
@@ -140,6 +163,9 @@ const createUser = async (req, res) => {
       return res.status(400).json({ error: "All fields are required!" });
     }
 
+    const hashedPassword = await hashSecret(userPassword);
+    const hashedPin = await hashSecret(userPin);
+
     const db = await open({
       filename: "./database/remote.db",
       driver: sqlite3Verbose.Database,
@@ -156,11 +182,11 @@ const createUser = async (req, res) => {
         userLastname,
         userDate,
         userEmail,
-        userPassword,
+        hashedPassword,
         userRole,
         userPhone,
         userfacultyId,
-        userPin,
+        hashedPin,
         "inactive",
       ],
     );
@@ -178,7 +204,6 @@ const createUser = async (req, res) => {
 
 const loginUser = async (req, res) => {
   try {
-    console.log("Incoming Login Body:", req.body);
     const { userEmail, userPassword } = req.body;
     if (!userEmail || !userPassword) {
       return res.status(400).json({ error: "Email and password are required!" });
@@ -187,12 +212,16 @@ const loginUser = async (req, res) => {
       filename: "./database/remote.db",
       driver: sqlite3Verbose.Database,
     });
-    const user = await db.get(
-      `SELECT * FROM users WHERE userEmail = ? AND userPassword = ?`,
-      [userEmail, userPassword],
-    );
+    const normalizedEmail = String(userEmail || "").trim().toLowerCase();
+    const user = await db.get(`SELECT * FROM users WHERE lower(userEmail) = ?`, [normalizedEmail]);
+    const isValidPassword = await verifySecret(user?.userPassword, userPassword);
 
-    if (user) {
+    if (user && isValidPassword) {
+      if (!isBcryptHash(user.userPassword)) {
+        const upgradedPasswordHash = await hashSecret(userPassword);
+        await db.run("UPDATE users SET userPassword = ? WHERE userId = ?", [upgradedPasswordHash, user.userId]);
+      }
+
       const now = new Date().toISOString();
       await db.run(
         `UPDATE users SET userStatus = 'active', lastLoginAt = ?, lastActiveAt = ? WHERE userId = ?`,
@@ -336,14 +365,25 @@ const verifyUserPin = async (req, res) => {
       return res.status(400).json({ error: "userId and userPin are required" });
     }
 
+    const targetUserId = Number(userId);
+    if (!Number.isInteger(targetUserId) || targetUserId <= 0) {
+      return res.status(400).json({ error: "Invalid userId" });
+    }
+
     const db = await open({
       filename: "./database/remote.db",
       driver: sqlite3Verbose.Database,
     });
 
+    const permission = await enforceSelfOrAdmin(db, req, targetUserId);
+    if (!permission.allowed) {
+      await db.close();
+      return res.status(permission.code).json({ error: permission.error });
+    }
+
     const user = await db.get(
       "SELECT userPin FROM users WHERE userId = ?",
-      [userId]
+      [targetUserId]
     );
     await db.close();
 
@@ -351,7 +391,8 @@ const verifyUserPin = async (req, res) => {
       return res.status(404).json({ error: "User not found" });
     }
 
-    if (String(user.userPin) !== String(userPin)) {
+    const isValidPin = await verifySecret(user.userPin, userPin);
+    if (!isValidPin) {
       return res.status(401).json({ error: "Invalid PIN" });
     }
 
@@ -434,6 +475,8 @@ const updateUser = async (req, res) => {
       [userId],
     );
 
+    const hashedPasswordOrNull = userPassword ? await hashSecret(userPassword) : null;
+
     const result = await db.run(
         `
         UPDATE users
@@ -447,7 +490,7 @@ const updateUser = async (req, res) => {
         userName,
         userLastname,
         userPhone,
-        userPassword,
+        hashedPasswordOrNull,
         userId,
       ],
     );
@@ -462,7 +505,7 @@ const updateUser = async (req, res) => {
       const nextName = userName ?? beforeUser.userName;
       const nextLastname = userLastname ?? beforeUser.userLastname;
       const nextPhone = userPhone ?? beforeUser.userPhone;
-      const nextPassword = userPassword ?? beforeUser.userPassword;
+      const nextPassword = hashedPasswordOrNull ?? beforeUser.userPassword;
 
       if (String(beforeUser.userName ?? "") !== String(nextName ?? "")) changedFields.push("userName");
       if (String(beforeUser.userLastname ?? "") !== String(nextLastname ?? "")) changedFields.push("userLastname");
@@ -524,7 +567,17 @@ const getUserProfile = async (req, res) => {
     const user = await db.get(
       `
       SELECT
-        u.*, 
+        u.userId,
+        u.userName,
+        u.userLastname,
+        u.userDate,
+        u.userEmail,
+        u.userRole,
+        u.userPhone,
+        u.userfacultyId,
+        u.userStatus,
+        u.lastLoginAt,
+        u.lastActiveAt,
         f.facultyName as userfacultyName
       FROM users u
       LEFT JOIN faculties f ON u.userfacultyId = f.facultyId
@@ -553,9 +606,6 @@ const changePassword = async (req, res) => {
       return res.status(400).json({ error: "Invalid user id" });
     }
 
-    console.log("Update Request for ID:", id);
-    console.log("Body Received:", req.body); 
-
     if (!oldPassword || !newPassword) {
       return res.status(400).json({ error: "กรุณาส่งข้อมูลให้ครบ (oldPassword, newPassword)" });
     }
@@ -571,7 +621,8 @@ const changePassword = async (req, res) => {
     // 1. check old password
     const user = await db.get("SELECT userPassword FROM users WHERE userId = ?", [id]);
 
-    if (!user || user.userPassword !== oldPassword) {
+    const isValidOldPassword = await verifySecret(user?.userPassword, oldPassword);
+    if (!user || !isValidOldPassword) {
       await db.close();
       return res.status(401).json({ error: "รหัสผ่านเดิมไม่ถูกต้อง" });
     }
@@ -583,9 +634,10 @@ const changePassword = async (req, res) => {
     }
 
     // 3. Update
+    const hashedNewPassword = await hashSecret(newPassword);
     await db.run(
       "UPDATE users SET userPassword = ? WHERE userId = ?", 
-      [newPassword, id]
+      [hashedNewPassword, id]
       );
 
     const actor = await db.get("SELECT userEmail FROM users WHERE userId = ?", [id]);
@@ -658,9 +710,6 @@ const requestOTP = async (req, res) => {
 };
 
 const verifyOTP = async (req, res) => {
-    console.log("--- Debug OTP Verification ---");
-    console.log("Body ที่ได้รับ:", req.body); 
-    
     const { email, otp, newPassword } = req.body;
 
     try {
@@ -676,30 +725,28 @@ const verifyOTP = async (req, res) => {
             return res.status(otpCheck.code || 400).json({ error: otpCheck.error });
         }
 
-        console.log("✅ OTP ถูกต้อง! กำลังอัปเดตรหัสผ่านใหม่ใน Database...");
         const db = await open({
             filename: "./database/remote.db",
             driver: sqlite3Verbose.Database,
         });
 
+        const hashedPassword = await hashSecret(newPassword);
+
         const result = await db.run(
             "UPDATE users SET userPassword = ? WHERE userEmail = ?",
-            [newPassword, normalizedEmail]
+          [hashedPassword, normalizedEmail]
         );
 
         await db.close();
 
         if (result.changes === 0) {
-            console.log("❌ ไม่พบ User นี้ในฐานข้อมูลจริง (UPDATE ไม่สำเร็จ)");
             return res.status(404).json({ error: "User not found in database." });
         }
         delete otpStore[normalizedEmail];
-
-        console.log("🎉 อัปเดตรหัสผ่านสำเร็จ!");
         res.status(200).json({ message: "Update password successfully" });
 
     } catch (error) {
-        console.error("🔥 Error ใน verifyOTP:", error);
+          console.error("verifyOTP error:", error);
         res.status(500).json({ error: "Internal server error" });
     }
 };
@@ -738,12 +785,14 @@ const resetPinWithOtp = async (req, res) => {
       [normalizedEmail],
     );
 
-    if (!user || String(user.userPassword) !== String(password)) {
+    const isValidPassword = await verifySecret(user?.userPassword, password);
+    if (!user || !isValidPassword) {
       await db.close();
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
-    await db.run("UPDATE users SET userPin = ? WHERE userId = ?", [String(newPin), user.userId]);
+    const hashedPin = await hashSecret(newPin);
+    await db.run("UPDATE users SET userPin = ? WHERE userId = ?", [hashedPin, user.userId]);
 
     await writeActivityLog(db, {
       actorUserId: user.userId,
@@ -815,17 +864,20 @@ const changePinWithOtp = async (req, res) => {
       return res.status(404).json({ error: "User not found" });
     }
 
-    if (String(user.userEmail || "").toLowerCase() !== normalizedEmail || String(user.userPassword) !== String(password)) {
+    const isValidPassword = await verifySecret(user?.userPassword, password);
+    if (String(user.userEmail || "").toLowerCase() !== normalizedEmail || !isValidPassword) {
       await db.close();
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
-    if (String(user.userPin) !== String(oldPin)) {
+    const isValidOldPin = await verifySecret(user.userPin, oldPin);
+    if (!isValidOldPin) {
       await db.close();
       return res.status(401).json({ error: "Old PIN is incorrect" });
     }
 
-    await db.run("UPDATE users SET userPin = ? WHERE userId = ?", [String(newPin), id]);
+    const hashedPin = await hashSecret(newPin);
+    await db.run("UPDATE users SET userPin = ? WHERE userId = ?", [hashedPin, id]);
 
     await writeActivityLog(db, {
       actorUserId: id,
