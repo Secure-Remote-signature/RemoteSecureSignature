@@ -1,30 +1,161 @@
 "use client";
 
-import React from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import api, { isAxiosError } from "@/app/lib/api";
+import { subscribeRealtime } from "@/app/lib/realtime";
 
-const overallStats = {
-  totalQueue: 6,
-  completedToday: 128,
-  failedToday: 2,
+interface DashboardSummaryApi {
+  requests?: {
+    pending?: number;
+    claimed?: number;
+    signing?: number;
+    signed?: number;
+    rejected?: number;
+  };
+}
+
+interface JobHistoryApi {
+  requestId: number;
+  requestNumber?: string;
+  requestDate?: string;
+  requestStatus?: string;
+  requestRTSP?: string | null;
+  clientName?: string | null;
+  clientLastName?: string | null;
+  ownerName?: string | null;
+  ownerLastName?: string | null;
+  facultyName?: string | null;
+}
+
+interface CncOverviewApi {
+  id: string;
+  name?: string;
+  faculty?: string;
+  status?: string;
+  currentJob?: string | null;
+  queueCount?: number;
+}
+
+type RecentJob = {
+  id: string;
+  user: string;
+  signatory: string;
+  faculty: string;
+  machine: string;
+  time: string;
+  status: "WAITING" | "PROCESSING" | "COMPLETED" | "FAILED";
 };
 
-const plotters = [
-  { id: "PLT-ENG", name: "Engineering Plotter", faculty: "Engineering", status: "BUSY", queue: 5, currentJob: "JOB-1045" },
-  { id: "PLT-SCI", name: "Science Plotter", faculty: "Science", status: "ONLINE", queue: 0, currentJob: null },
-  { id: "PLT-BUS", name: "Business Plotter", faculty: "Business", status: "OFFLINE", queue: 0, currentJob: null },
-  { id: "PLT-MED", name: "Medicine Plotter", faculty: "Medicine", status: "ONLINE", queue: 1, currentJob: null },
-];
+function formatTime(value?: string): string {
+  if (!value) return "-";
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return value;
+  const hh = String(dt.getHours()).padStart(2, "0");
+  const mm = String(dt.getMinutes()).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
 
-const recentJobs = [
-  { id: "JOB-1045", user: "อาจารย์ สมชาย", signatory: "อาจารย์ ใจดี", faculty: "Engineering", machine: "PLT-ENG", time: "11:05 AM", status: "PROCESSING" },
-  { id: "JOB-1044", user: "admin@example.com", signatory: "admin@example.com", faculty: "Science", machine: "PLT-SCI", time: "10:50 AM", status: "COMPLETED" },
-  { id: "JOB-1043", user: "student1@example.com", signatory: "student1@example.com", faculty: "Engineering", machine: "PLT-ENG", time: "10:45 AM", status: "COMPLETED" },
-  { id: "JOB-1042", user: "test@example.com", signatory: "test@example.com", faculty: "Business", machine: "PLT-BUS", time: "10:30 AM", status: "FAILED" },
-];
+function mapRequestStatus(status?: string): RecentJob["status"] {
+  const s = String(status || "").toLowerCase();
+  if (s === "signed") return "COMPLETED";
+  if (s === "rejected") return "FAILED";
+  if (s === "pending") return "WAITING";
+  return "PROCESSING";
+}
 
 export default function AdminDashboardPage() {
   const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [overallStats, setOverallStats] = useState({
+    totalQueue: 0,
+    completedToday: 0,
+    failedToday: 0,
+  });
+  const [recentJobs, setRecentJobs] = useState<RecentJob[]>([]);
+  const [machineCards, setMachineCards] = useState<Array<{
+    id: string;
+    name: string;
+    faculty: string;
+    status: string;
+    queue: number;
+    currentJob: string | null;
+  }>>([]);
+
+  const fetchDashboard = useCallback(async (showLoading = true) => {
+    try {
+      if (showLoading) setLoading(true);
+      setErrorMsg("");
+
+      const [summaryRes, jobsRes, cncRes] = await Promise.all([
+        api.get(`${process.env.NEXT_PUBLIC_API_URL}/srs/admin/dashboard-summary`),
+        api.get(`${process.env.NEXT_PUBLIC_API_URL}/srs/admin/job-history?limit=6`),
+        api.get(`${process.env.NEXT_PUBLIC_API_URL}/srs/admin/cnc-overview?limit=100`),
+      ]);
+
+      const summary = (summaryRes.data || {}) as DashboardSummaryApi;
+      const reqSummary = summary.requests || {};
+
+      setOverallStats({
+        totalQueue: Number(reqSummary.pending || 0) + Number(reqSummary.claimed || 0) + Number(reqSummary.signing || 0),
+        completedToday: Number(reqSummary.signed || 0),
+        failedToday: Number(reqSummary.rejected || 0),
+      });
+
+      const rows = (jobsRes.data?.jobs || []) as JobHistoryApi[];
+      setRecentJobs(
+        rows.slice(0, 6).map((row) => ({
+          id: row.requestNumber || `REQ-${row.requestId}`,
+          user: `${row.clientName || ""} ${row.clientLastName || ""}`.trim() || "-",
+          signatory: `${row.ownerName || ""} ${row.ownerLastName || ""}`.trim() || "-",
+          faculty: row.facultyName || "-",
+          machine: row.requestRTSP || "none",
+          time: formatTime(row.requestDate),
+          status: mapRequestStatus(row.requestStatus),
+        })),
+      );
+
+      const machines = (cncRes.data?.devices || []) as CncOverviewApi[];
+      setMachineCards(
+        machines.map((machine) => ({
+          id: machine.id,
+          name: machine.name || machine.id,
+          faculty: machine.faculty || "-",
+          status: String(machine.status || "ONLINE").toUpperCase(),
+          queue: Number(machine.queueCount || 0),
+          currentJob: machine.currentJob || null,
+        })),
+      );
+    } catch (error: unknown) {
+      if (isAxiosError(error) && error.response) {
+        setErrorMsg(error.response.data?.error || "โหลด Dashboard ไม่สำเร็จ");
+      } else {
+        setErrorMsg("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้");
+      }
+    } finally {
+      if (showLoading) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchDashboard(true);
+  }, [fetchDashboard]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeRealtime((event) => {
+      if (
+        event.type === "request.created" ||
+        event.type === "request.statusChanged" ||
+        event.type === "audit-log.created"
+      ) {
+        void fetchDashboard(false);
+      }
+    });
+
+    return unsubscribe;
+  }, [fetchDashboard]);
+
   const getStatusStyle = (status: string) => {
     switch (status) {
       case "ONLINE":
@@ -47,14 +178,23 @@ export default function AdminDashboardPage() {
         
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-800">ภาพรวมระบบ (Multi-Device Dashboard)</h1>
-            <p className="text-sm text-gray-500 mt-1">มอนิเตอร์สถานะเครื่อง CNC Plotter ทุกคณะแบบ Real-time</p>
+            <h1 className="text-2xl font-bold text-gray-800">ภาพรวมระบบ (Dashboard)</h1>
+            <p className="text-sm text-gray-500 mt-1">มอนิเตอร์สถานะเครื่อง CNC และคิวงานแบบ Real-time</p>
           </div>
-          <button className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors shadow-sm flex items-center gap-2">
+          <button
+            onClick={() => void fetchDashboard(true)}
+            className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors shadow-sm flex items-center gap-2"
+          >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
             รีเฟรชข้อมูล
           </button>
         </div>
+
+        {errorMsg && (
+          <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {errorMsg}
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex items-center justify-between">
@@ -86,9 +226,14 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
-        <h2 className="text-lg font-bold text-gray-800 pt-2">สถานะฮาร์ดแวร์ประจำคณะ</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-          {plotters.map((plotter) => {
+        <h2 className="text-lg font-bold text-gray-800 pt-2">สถานะเครื่อง CNC</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {machineCards.length === 0 && (
+            <div className="md:col-span-2 xl:col-span-3 rounded-xl border border-gray-200 bg-white p-6 text-sm text-gray-500">
+              ยังไม่พบข้อมูลเครื่อง CNC
+            </div>
+          )}
+          {machineCards.map((plotter) => {
             const style = getStatusStyle(plotter.status);
             return (
               <div key={plotter.id} className={`bg-white rounded-2xl border ${style.border} shadow-sm overflow-hidden flex flex-col transition-all hover:shadow-md`}>
@@ -153,7 +298,19 @@ export default function AdminDashboardPage() {
                 </tr>
               </thead>
               <tbody>
-                {recentJobs.map((job) => {
+                {loading ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-8 text-center text-sm text-gray-500">
+                      กำลังโหลดข้อมูล dashboard...
+                    </td>
+                  </tr>
+                ) : recentJobs.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-8 text-center text-sm text-gray-500">
+                      ยังไม่มีคิวงานล่าสุด
+                    </td>
+                  </tr>
+                ) : recentJobs.map((job) => {
                   const style = getStatusStyle(job.status);
                   return (
                     <tr key={job.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors last:border-0">
