@@ -24,6 +24,15 @@ type Device = {
   queue: QueueItem[];
 };
 
+type MachineCommandRealtime = {
+  commandId?: string;
+  stage?: "sent" | "ack" | "failed";
+  status?: "SENT" | "ACK" | "FAILED";
+  action?: string;
+  deviceId?: string;
+  message?: string;
+};
+
 function formatTime(value: string): string {
   if (!value) return "-";
   const dt = new Date(value);
@@ -40,6 +49,7 @@ export default function CNCManagementPage() {
   const [controlLoading, setControlLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
+  const [lastCommandStatus, setLastCommandStatus] = useState<"SENT" | "ACK" | "FAILED" | null>(null);
 
   const fetchCncOverview = useCallback(async (showLoading = true) => {
     try {
@@ -82,10 +92,22 @@ export default function CNCManagementPage() {
       if (event.type === "request.created" || event.type === "request.statusChanged") {
         void fetchCncOverview(false);
       }
+
+      if (event.type === "machine.command") {
+        const payload = (event.payload || {}) as MachineCommandRealtime;
+        if (!payload.deviceId || !activeTab || payload.deviceId !== activeTab) {
+          return;
+        }
+
+        setLastCommandStatus(payload.status || null);
+        if (payload.message) {
+          setActionFeedback(payload.message);
+        }
+      }
     });
 
     return unsubscribe;
-  }, [fetchCncOverview]);
+  }, [fetchCncOverview, activeTab]);
 
   const activeDevice = useMemo(() => devices.find((d) => d.id === activeTab), [devices, activeTab]);
   const activeQueue = activeDevice?.queue || [];
@@ -169,7 +191,15 @@ export default function CNCManagementPage() {
         )}
 
         {actionFeedback && (
-          <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-medium text-indigo-700">
+          <div
+            className={`rounded-xl px-4 py-3 text-sm font-medium border ${
+              lastCommandStatus === "FAILED"
+                ? "border-rose-200 bg-rose-50 text-rose-700"
+                : lastCommandStatus === "ACK"
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                  : "border-indigo-200 bg-indigo-50 text-indigo-700"
+            }`}
+          >
             <div className="flex items-center justify-between gap-3">
               <span>{actionFeedback}</span>
               <button
