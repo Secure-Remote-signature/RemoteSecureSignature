@@ -42,7 +42,9 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   }, []);
   const handleLogout = () => {
     if (confirm("คุณต้องการออกจากระบบใช่หรือไม่?")) {
+      sessionStorage.removeItem("token");
       sessionStorage.removeItem("user_session");
+      sessionStorage.removeItem("auth_notice");
       router.push("/login");
     }
   };
