@@ -71,6 +71,14 @@ export default function AdminUsersPage() {
     }
   };
 
+  const handleDelete = (user: User) => {
+    if (confirm(`คุณต้องการลบผู้ใช้ ${user.name} ใช่หรือไม่?`)) {
+      setUsers((prev) => prev.filter((u) => u.id !== user.id));
+      if (editingUser?.id === user.id) {
+        handleCloseModal();
+      }
+    }
+  };
 
   return (
     <section className="min-h-full bg-[#F8FAFC] p-6 pi:p-8">
@@ -104,12 +112,20 @@ export default function AdminUsersPage() {
                     </span>
                   </td>
                   <td className="px-6 py-4">
-                    <button 
-                      className="text-indigo-600 hover:text-indigo-900"
-                      onClick={() => handleEdit(user)}
-                    >
-                      แก้ไข
-                    </button>
+                    <div className="flex items-center gap-4">
+                      <button
+                        className="text-indigo-600 hover:text-indigo-900"
+                        onClick={() => handleEdit(user)}
+                      >
+                        แก้ไข
+                      </button>
+                      <button
+                        className="text-red-600 hover:text-red-900"
+                        onClick={() => handleDelete(user)}
+                      >
+                        ลบ
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
