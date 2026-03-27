@@ -56,6 +56,10 @@ class SettingPage(tk.Frame):
                   bg="#F59E0B", fg="#FFFFFF", relief="flat", activebackground="#D97706",
                   command=lambda: controller.show_frame("ChangePasswordPage")).pack(anchor="w", pady=(5, 0), ipady=5, ipadx=10)
 
+        tk.Button(left_col, text="เปลี่ยน PIN", font=("Arial", 10, "bold"),
+              bg="#0EA5E9", fg="#FFFFFF", relief="flat", activebackground="#0284C7",
+              command=lambda: controller.show_frame("ChangePinPage")).pack(anchor="w", pady=(8, 0), ipady=5, ipadx=10)
+
         # --- RIGHT COLUMN (Read-only Fields) ---
         self.create_label(right_col, "ตำแหน่ง (ไม่สามารถแก้ไขได้):", is_admin_only=True)
         self.position_entry = self.create_readonly_text(right_col, "Loading...")
