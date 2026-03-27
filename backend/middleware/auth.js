@@ -6,9 +6,45 @@ import { getClientIp, writeActivityLog } from "../lib/activityLog.js";
 
 const sqlite3Verbose = sqlite3.verbose();
 const JWT_SECRET = String(process.env.JWT_SECRET || "dev-secret-change-me");
+const AUTH_DENY_DEDUPE_WINDOW_MS = Number(process.env.AUTH_DENY_DEDUPE_WINDOW_MS || 30000);
+const recentAuthDeny = new Map();
+
+function shouldSkipDuplicateAuthDeny(req, { status, details, action }) {
+  const now = Date.now();
+  const key = [
+    getClientIp(req),
+    req.method,
+    req.originalUrl || req.url,
+    status,
+    action,
+    details,
+  ].join("|");
+
+  const lastSeen = recentAuthDeny.get(key);
+  if (lastSeen && now - lastSeen < AUTH_DENY_DEDUPE_WINDOW_MS) {
+    return true;
+  }
+
+  recentAuthDeny.set(key, now);
+
+  if (recentAuthDeny.size > 2000) {
+    const expiry = now - AUTH_DENY_DEDUPE_WINDOW_MS;
+    for (const [cacheKey, seenAt] of recentAuthDeny.entries()) {
+      if (seenAt < expiry) {
+        recentAuthDeny.delete(cacheKey);
+      }
+    }
+  }
+
+  return false;
+}
 
 async function logAuthDeny(req, { status = "FAILED", details = "Unauthorized", action = "ACCESS_DENIED" } = {}) {
   try {
+    if (shouldSkipDuplicateAuthDeny(req, { status, details, action })) {
+      return;
+    }
+
     const db = await open({
       filename: "./database/remote.db",
       driver: sqlite3Verbose.Database,
