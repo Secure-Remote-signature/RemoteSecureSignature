@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { getClientIp, writeActivityLog } from '../lib/activityLog.js';
+import { broadcastRealtimeEvent } from '../lib/realtime.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -91,6 +92,12 @@ async function transitionStatus(db, requestId, toStatus, expectedStatus = null, 
     if (!result || result.changes === 0) {
         return { ok: false, code: 409, error: "Transition failed" };
     }
+
+    broadcastRealtimeEvent("request.statusChanged", {
+        requestId: Number(requestId),
+        toStatus,
+        fromStatus: current.requestStatus,
+    });
 
     return { ok: true };
 }
@@ -217,6 +224,12 @@ const submitRequest = async (req, res) => {
         `;
 
         const result = await db.run(lifecycleSql, params);
+
+        broadcastRealtimeEvent("request.created", {
+            requestId: result.lastID,
+            requestNumber: normalizedDocId,
+            status: REQUEST_STATUS.PENDING,
+        });
 
         const requesterProfile = await db.get(
             "SELECT userEmail FROM users WHERE userId = ?",
