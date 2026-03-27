@@ -42,6 +42,24 @@ async function initializeDatabase() {
         FOREIGN KEY (userfacultyId) REFERENCES faculties(facultyId)
        );`
       );
+
+    // Lightweight migration for user online/offline status tracking.
+    const userColumns = await db.all("PRAGMA table_info(users)");
+    const hasUserStatus = userColumns.some((col) => col.name === "userStatus");
+    const hasLastLoginAt = userColumns.some((col) => col.name === "lastLoginAt");
+    const hasLastActiveAt = userColumns.some((col) => col.name === "lastActiveAt");
+
+    if (!hasUserStatus) {
+      await db.exec("ALTER TABLE users ADD COLUMN userStatus TEXT DEFAULT 'inactive'");
+    }
+    if (!hasLastLoginAt) {
+      await db.exec("ALTER TABLE users ADD COLUMN lastLoginAt TEXT");
+    }
+    if (!hasLastActiveAt) {
+      await db.exec("ALTER TABLE users ADD COLUMN lastActiveAt TEXT");
+    }
+
+    await db.run("UPDATE users SET userStatus = 'inactive' WHERE userStatus IS NULL OR userStatus = ''");
     await db.exec(`
        CREATE TABLE IF NOT EXISTS requestSign (
          requestId INTEGER PRIMARY KEY AUTOINCREMENT,
