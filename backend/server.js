@@ -8,6 +8,7 @@ import initializeDatabase from "./config/init.js";
 import userService from "./router/user.js";
 import requestService from "./router/request.js";
 import machineService from "./router/machine.js";
+import adminService from "./router/admin.js";
 
 // Setup __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -35,6 +36,7 @@ if (!fs.existsSync(uploadDir)) {
 app.use("/srs/user", userService);
 app.use("/srs/request", requestService);
 app.use("/srs/machine", machineService);
+app.use("/srs/admin", adminService);
 app.use('/uploads', express.static(uploadDir)); 
 
 app.get("/srs", (req, res) => {

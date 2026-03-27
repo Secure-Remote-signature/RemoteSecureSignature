@@ -65,6 +65,8 @@ export default function Login() {
       }
       if (response.status === 200) {
         const userData = response.data;
+        const normalizedRole = String(userData.role ?? '').toLowerCase();
+        const landingPath = normalizedRole.includes('admin') ? '/admin/dashboard' : '/dashboard';
         sessionStorage.setItem("user_session", JSON.stringify({
           token: userData.token,
           name: userData.name,
@@ -74,7 +76,7 @@ export default function Login() {
         }));
 
         alert(`ยินดีต้อนรับคุณ ${userData.name} ${userData.lastName}`);
-        router.push('/dashboard');
+        router.push(landingPath);
       }
     } catch (error: unknown) {
       console.error("เกิดข้อผิดพลาดในการเข้าสู่ระบบ", error);
