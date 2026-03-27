@@ -1,35 +1,110 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import api, { isAxiosError } from "@/app/lib/api";
 
 interface AuditLog {
   id: string;
   timestamp: string;
   user: string;
-  action: "SIGN_REQUEST" | "LOGIN" | "ADMIN_UPDATE" | "E_STOP";
+  action: string;
   targetDevice?: string;
   ipAddress: string;
-  status: "SUCCESS" | "FAILED" | "WARNING";
+  status: "SUCCESS" | "FAILED" | "WARNING" | string;
   details: string;
 }
 
-const mockLogs: AuditLog[] = [
-  { id: "LOG-9042", timestamp: "2026-03-27 10:45:12", user: "somchai@example.com", action: "SIGN_REQUEST", targetDevice: "PLT-ENG", ipAddress: "192.168.1.45", status: "SUCCESS", details: "Signature Job JOB-1045 queued successfully." },
-  { id: "LOG-9041", timestamp: "2026-03-27 10:30:05", user: "test@example.com", action: "SIGN_REQUEST", targetDevice: "PLT-SCI", ipAddress: "192.168.1.112", status: "FAILED", details: "Access Denied: User faculty (Business) does not match target device (Science)." },
-  { id: "LOG-9040", timestamp: "2026-03-27 09:15:00", user: "admin@example.com", action: "ADMIN_UPDATE", ipAddress: "10.0.0.5", status: "SUCCESS", details: "Granted cross-faculty access (Science) to somchai@example.com" },
-  { id: "LOG-9039", timestamp: "2026-03-27 08:50:22", user: "admin@example.com", action: "E_STOP", targetDevice: "PLT-ENG", ipAddress: "10.0.0.5", status: "WARNING", details: "Emergency stop triggered by Administrator." },
-  { id: "LOG-9038", timestamp: "2026-03-27 08:00:15", user: "sudha@example.com", action: "LOGIN", ipAddress: "172.16.0.44", status: "SUCCESS", details: "User logged in successfully via Web." },
-];
+function formatDate(value?: string | null): string {
+  if (!value) return "-";
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return value;
+  const dd = String(dt.getDate()).padStart(2, "0");
+  const mm = String(dt.getMonth() + 1).padStart(2, "0");
+  const yyyy = dt.getFullYear();
+  const hh = String(dt.getHours()).padStart(2, "0");
+  const mi = String(dt.getMinutes()).padStart(2, "0");
+  const ss = String(dt.getSeconds()).padStart(2, "0");
+  return `${dd}/${mm}/${yyyy} ${hh}:${mi}:${ss}`;
+}
+
+function normalizeAction(action?: string): string {
+  const normalized = String(action || "").toUpperCase();
+  if (!normalized) return "UNKNOWN";
+  return normalized;
+}
+
+function normalizeStatus(status?: string): AuditLog["status"] {
+  const normalized = String(status || "").toUpperCase();
+  if (normalized === "SUCCESS" || normalized === "FAILED" || normalized === "WARNING") {
+    return normalized;
+  }
+  return "WARNING";
+}
 
 export default function AuditLogsPage() {
   const [searchTerm, setSearchTerm] = useState("");
+  const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState("");
   const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
 
-  const filteredLogs = mockLogs.filter(log => 
-    log.user.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    log.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    log.id.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  useEffect(() => {
+    const fetchAuditLogs = async () => {
+      try {
+        setLoading(true);
+        setErrorMsg("");
+
+        const res = await api.get(`${process.env.NEXT_PUBLIC_API_URL}/srs/admin/audit-logs?limit=300`);
+        const rows = (res.data?.logs || []) as Array<{
+          id?: string;
+          timestamp?: string;
+          user?: string;
+          action?: string;
+          targetDevice?: string;
+          ipAddress?: string;
+          status?: string;
+          details?: string;
+        }>;
+
+        const mapped: AuditLog[] = rows.map((row, index) => ({
+          id: row.id || `LOG-${index + 1}`,
+          timestamp: formatDate(row.timestamp),
+          user: row.user || "-",
+          action: normalizeAction(row.action),
+          targetDevice: row.targetDevice || "-",
+          ipAddress: row.ipAddress || "-",
+          status: normalizeStatus(row.status),
+          details: row.details || "-",
+        }));
+
+        setLogs(mapped);
+      } catch (error: unknown) {
+        if (isAxiosError(error) && error.response) {
+          setErrorMsg(error.response.data?.error || "โหลด Audit Logs ไม่สำเร็จ");
+        } else {
+          setErrorMsg("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้");
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchAuditLogs();
+  }, []);
+
+  const filteredLogs = useMemo(() => {
+    const keyword = searchTerm.trim().toLowerCase();
+    if (!keyword) return logs;
+
+    return logs.filter(
+      (log) =>
+        log.user.toLowerCase().includes(keyword) ||
+        log.action.toLowerCase().includes(keyword) ||
+        log.id.toLowerCase().includes(keyword) ||
+        log.details.toLowerCase().includes(keyword) ||
+        (log.targetDevice || "").toLowerCase().includes(keyword),
+    );
+  }, [logs, searchTerm]);
 
   const getActionStyle = (action: string) => {
     switch (action) {
@@ -72,6 +147,12 @@ export default function AuditLogsPage() {
         </div>
 
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          {loading && (
+            <div className="px-6 py-4 text-sm text-gray-500 border-b border-gray-100">กำลังโหลดข้อมูล Audit Logs...</div>
+          )}
+          {!loading && errorMsg && (
+            <div className="px-6 py-4 text-sm text-rose-700 bg-rose-50 border-b border-rose-100">{errorMsg}</div>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full text-left whitespace-nowrap">
               <thead className="bg-gray-50">
@@ -94,7 +175,7 @@ export default function AuditLogsPage() {
                     <td className="px-6 py-4 text-sm text-gray-600 font-medium">{log.user}</td>
                     <td className="px-6 py-4">
                       <span className={`px-2.5 py-1 text-xs font-bold rounded-lg border ${getActionStyle(log.action)}`}>
-                        {log.action.replace('_', ' ')}
+                        {log.action.replace(/_/g, " ")}
                       </span>
                     </td>
                     <td className="px-6 py-4">
@@ -121,7 +202,7 @@ export default function AuditLogsPage() {
                 {filteredLogs.length === 0 && (
                   <tr>
                     <td colSpan={6} className="px-6 py-12 text-center text-gray-500 text-sm">
-                      ไม่พบข้อมูล Log ที่ค้นหา
+                      {loading ? "กำลังโหลดข้อมูล..." : "ไม่พบข้อมูล Log ที่ค้นหา"}
                     </td>
                   </tr>
                 )}
@@ -166,12 +247,6 @@ export default function AuditLogsPage() {
                   <div className="font-semibold text-gray-500 mb-2">รายละเอียด (Payload / Reason):</div>
                   <div className="bg-slate-800 text-green-400 p-4 rounded-xl font-mono text-xs overflow-x-auto shadow-inner">
                     {selectedLog.details}
-                    {selectedLog.action === "SIGN_REQUEST" && (
-                      <div className="mt-2 text-gray-400">
-                        {`\n> Coordinates Hash: a8f5f167f44f4964e...`}
-                        {`\n> Verify Signature: PASS`}
-                      </div>
-                    )}
                   </div>
                 </div>
                 <div className="pt-2 flex justify-end">
