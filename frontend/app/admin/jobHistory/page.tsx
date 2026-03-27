@@ -1,6 +1,7 @@
 "use client";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import api, { isAxiosError } from "@/app/lib/api";
+import { subscribeRealtime } from "@/app/lib/realtime";
 
 interface JobRecord {
   requestId: number;
@@ -75,53 +76,63 @@ export default function JobHistoryPage() {
   const [errorMsg, setErrorMsg] = useState("");
   const [selectedJob, setSelectedJob] = useState<JobRecord | null>(null);
 
-  useEffect(() => {
-    const fetchJobHistory = async () => {
-      try {
-        setLoading(true);
-        setErrorMsg("");
-        const res = await api.get(`${process.env.NEXT_PUBLIC_API_URL}/srs/admin/job-history?limit=300`);
-        const rows = (res.data?.jobs || []) as AdminJobHistoryApi[];
+  const fetchJobHistory = useCallback(async (showLoading = true) => {
+    try {
+      if (showLoading) setLoading(true);
+      setErrorMsg("");
+      const res = await api.get(`${process.env.NEXT_PUBLIC_API_URL}/srs/admin/job-history?limit=300`);
+      const rows = (res.data?.jobs || []) as AdminJobHistoryApi[];
 
-        const mapped: JobRecord[] = rows.map((row) => {
-          const requester = `${row.clientName || ""} ${row.clientLastName || ""}`.trim() || "-";
-          const signer = `${row.ownerName || ""} ${row.ownerLastName || ""}`.trim() || "-";
-          const status = mapRequestStatusToUiStatus(row.requestStatus);
-          const duration = status === "COMPLETED"
-            ? formatDuration(row.createdAt || row.requestDate, row.completedAt || row.cncCompletedAt)
-            : "-";
+      const mapped: JobRecord[] = rows.map((row) => {
+        const requester = `${row.clientName || ""} ${row.clientLastName || ""}`.trim() || "-";
+        const signer = `${row.ownerName || ""} ${row.ownerLastName || ""}`.trim() || "-";
+        const status = mapRequestStatusToUiStatus(row.requestStatus);
+        const duration = status === "COMPLETED"
+          ? formatDuration(row.createdAt || row.requestDate, row.completedAt || row.cncCompletedAt)
+          : "-";
 
-          return {
-            requestId: row.requestId,
-            requestNumber: row.requestNumber || `REQ-${row.requestId}`,
-            timestamp: formatDate(row.requestDate),
-            requester,
-            signer,
-            faculty: row.facultyName || "-",
-            targetDevice: row.requestRTSP || "none",
-            status,
-            duration,
-            errorMessage: row.cncLastError || row.rejectReason || undefined,
-            coordinatesHash: row.signatureCoordinates
-              ? `${String(row.signatureCoordinates).slice(0, 24)}...`
-              : "-",
-          };
-        });
+        return {
+          requestId: row.requestId,
+          requestNumber: row.requestNumber || `REQ-${row.requestId}`,
+          timestamp: formatDate(row.requestDate),
+          requester,
+          signer,
+          faculty: row.facultyName || "-",
+          targetDevice: row.requestRTSP || "none",
+          status,
+          duration,
+          errorMessage: row.cncLastError || row.rejectReason || undefined,
+          coordinatesHash: row.signatureCoordinates
+            ? `${String(row.signatureCoordinates).slice(0, 24)}...`
+            : "-",
+        };
+      });
 
-        setJobs(mapped);
-      } catch (error: unknown) {
-        if (isAxiosError(error) && error.response) {
-          setErrorMsg(error.response.data?.error || "โหลดประวัติงานไม่สำเร็จ");
-        } else {
-          setErrorMsg("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้");
-        }
-      } finally {
-        setLoading(false);
+      setJobs(mapped);
+    } catch (error: unknown) {
+      if (isAxiosError(error) && error.response) {
+        setErrorMsg(error.response.data?.error || "โหลดประวัติงานไม่สำเร็จ");
+      } else {
+        setErrorMsg("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้");
       }
-    };
-
-    void fetchJobHistory();
+    } finally {
+      if (showLoading) setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void fetchJobHistory(true);
+  }, [fetchJobHistory]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeRealtime((event) => {
+      if (event.type === "request.created" || event.type === "request.statusChanged") {
+        void fetchJobHistory(false);
+      }
+    });
+
+    return unsubscribe;
+  }, [fetchJobHistory]);
 
   const filteredJobs = useMemo(() => jobs.filter((job) => {
     const searchLower = searchTerm.toLowerCase();
