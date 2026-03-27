@@ -15,6 +15,19 @@ const initialSettings = {
   maxLoginAttempts: 5,
 };
 
+const ToggleSwitch = ({ name, checked, label, description, onChange }: { name: string, checked: boolean, label: string, description: string, onChange: (e: React.ChangeEvent<HTMLInputElement>) => void }) => (
+  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100">
+    <div>
+      <p className="text-sm font-bold text-gray-800">{label}</p>
+      <p className="text-xs text-gray-500 mt-0.5">{description}</p>
+    </div>
+    <label className="relative inline-flex items-center cursor-pointer">
+      <input type="checkbox" name={name} checked={checked} onChange={onChange} className="sr-only peer" />
+      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+    </label>
+  </div>
+);
+
 export default function SystemSettingsPage() {
   const [settings, setSettings] = useState(initialSettings);
   const [isSaving, setIsSaving] = useState(false);
@@ -40,24 +53,10 @@ export default function SystemSettingsPage() {
     }, 800);
   };
 
-  const ToggleSwitch = ({ name, checked, label, description }: { name: string, checked: boolean, label: string, description: string }) => (
-    <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100">
-      <div>
-        <p className="text-sm font-bold text-gray-800">{label}</p>
-        <p className="text-xs text-gray-500 mt-0.5">{description}</p>
-      </div>
-      <label className="relative inline-flex items-center cursor-pointer">
-        <input type="checkbox" name={name} checked={checked} onChange={handleChange} className="sr-only peer" />
-        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-      </label>
-    </div>
-  );
-
   return (
     <section className="min-h-full bg-[#F8FAFC] p-6 pi:p-8">
       <div className="max-w-4xl mx-auto space-y-6">
         
-        {/* Header */}
         <div>
           <h1 className="text-2xl font-bold text-gray-800">ตั้งค่าระบบ (System Settings)</h1>
           <p className="text-sm text-gray-500 mt-1">จัดการค่าเริ่มต้นของฮาร์ดแวร์, ความปลอดภัย, และโหมดซ่อมบำรุง</p>
@@ -65,7 +64,6 @@ export default function SystemSettingsPage() {
 
         <form onSubmit={handleSave} className="space-y-6">
           
-          {/* --- 1. Global System --- */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
               <h2 className="text-lg font-bold text-gray-800">ระบบส่วนกลาง (Global Settings)</h2>
@@ -102,69 +100,6 @@ export default function SystemSettingsPage() {
               </div>
             </div>
           </div>
-
-          {/* --- 2. Hardware Tuning --- */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
-              <h2 className="text-lg font-bold text-gray-800">ตั้งค่าฮาร์ดแวร์เริ่มต้น (Hardware Defaults)</h2>
-              <span className="text-xs font-semibold bg-indigo-100 text-indigo-700 px-2.5 py-1 rounded-lg">ใช้กับทุกเครื่อง</span>
-            </div>
-            <div className="p-6 space-y-5">
-              
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1.5">ความเร็วการวาด (Draw Speed - Feed Rate)</label>
-                  <div className="relative">
-                    <input 
-                      type="number" 
-                      name="defaultDrawSpeed" 
-                      value={settings.defaultDrawSpeed} 
-                      onChange={handleChange} 
-                      className="w-full border text-Slate-gray border-gray-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm"
-                    />
-                    <span className="absolute right-4 top-2.5 text-xs text-gray-400 font-bold">mm/min</span>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1.5">องศายกปากกา (Pen Up Angle)</label>
-                  <div className="relative">
-                    <input 
-                      type="number" 
-                      name="defaultPenUpAngle" 
-                      value={settings.defaultPenUpAngle} 
-                      onChange={handleChange} 
-                      className="w-full border text-Slate-gray border-gray-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm"
-                    />
-                    <span className="absolute right-4 top-2.5 text-xs text-gray-400 font-bold">องศา</span>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1.5">องศาลงปากกา (Pen Down Angle)</label>
-                  <div className="relative">
-                    <input 
-                      type="number" 
-                      name="defaultPenDownAngle" 
-                      value={settings.defaultPenDownAngle} 
-                      onChange={handleChange} 
-                      className="w-full border text-Slate-gray border-gray-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm"
-                    />
-                    <span className="absolute right-4 top-2.5 text-xs text-gray-400 font-bold">องศา</span>
-                  </div>
-                </div>
-              </div>
-
-              <ToggleSwitch 
-                name="autoHomeAfterJob" 
-                checked={settings.autoHomeAfterJob} 
-                label="ส่งหัวพิมพ์กลับจุดเริ่มต้นเสมอ (Auto-Home)" 
-                description="เมื่อเซ็นงานเสร็จ ระบบจะสั่งให้เครื่องกลับไปที่พิกัด 0,0 อัตโนมัติ" 
-              />
-            </div>
-          </div>
-
-          {/* --- 3. Security Settings --- */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
               <h2 className="text-lg font-bold text-gray-800">ความปลอดภัย (Security Parameters)</h2>
@@ -203,7 +138,6 @@ export default function SystemSettingsPage() {
             </div>
           </div>
 
-          {/* --- Actions --- */}
           <div className="pt-4 flex justify-end gap-4 border-t border-gray-200">
             <button 
               type="button" 
