@@ -128,6 +128,38 @@ const logoutUser = async (req, res) => {
   }
 };
 
+const heartbeatUser = async (req, res) => {
+  try {
+    const requesterIdRaw = req.body?.userId ?? req.headers["x-user-id"];
+    const requesterId = Number(Array.isArray(requesterIdRaw) ? requesterIdRaw[0] : requesterIdRaw);
+
+    if (!Number.isInteger(requesterId) || requesterId <= 0) {
+      return res.status(400).json({ error: "Invalid user id" });
+    }
+
+    const db = await open({
+      filename: "./database/remote.db",
+      driver: sqlite3Verbose.Database,
+    });
+
+    const now = new Date().toISOString();
+    const result = await db.run(
+      `UPDATE users SET userStatus = 'active', lastActiveAt = ? WHERE userId = ?`,
+      [now, requesterId],
+    );
+    await db.close();
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    return res.status(200).json({ message: "Heartbeat updated" });
+  } catch (error) {
+    console.error("Heartbeat error:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+};
+
 const verifyUserPin = async (req, res) => {
   try {
     const { userId, userPin } = req.body;
@@ -507,6 +539,7 @@ export default {
   createUser,
   loginUser,
   logoutUser,
+  heartbeatUser,
   verifyUserPin,
   deluser,
   updateUser,
