@@ -1,9 +1,10 @@
 "use client";
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Home, History, Settings, LogOut, X, FilePen, Shield, Users } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import api from '@/app/lib/api';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -12,16 +13,23 @@ interface SidebarProps {
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const menuItems = useMemo(() => {
-    let role = '';
+  const [role, setRole] = useState('');
+
+  useEffect(() => {
     const session = sessionStorage.getItem('user_session');
-    if (session) {
-      try {
-        role = String(JSON.parse(session)?.role ?? '').toLowerCase();
-      } catch {
-        role = '';
-      }
+    if (!session) {
+      setRole('');
+      return;
     }
+
+    try {
+      setRole(String(JSON.parse(session)?.role ?? '').toLowerCase());
+    } catch {
+      setRole('');
+    }
+  }, []);
+
+  const menuItems = useMemo(() => {
     const isAdmin = role.includes('admin');
     if (isAdmin) {
       return [
@@ -39,9 +47,29 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       { name: 'การตั้งค่า', href: '/SettingPage', icon: Settings },
       { name: 'คำร้องขอ', href: '/requestpage', icon: FilePen },
     ];
-  }, []);
-  const handleLogout = () => {
+  }, [role]);
+  const handleLogout = async () => {
     if (confirm("คุณต้องการออกจากระบบใช่หรือไม่?")) {
+      const sessionRaw = sessionStorage.getItem("user_session");
+      let userId: number | null = null;
+
+      if (sessionRaw) {
+        try {
+          const parsed = JSON.parse(sessionRaw);
+          userId = Number(parsed?.id);
+        } catch {
+          userId = null;
+        }
+      }
+
+      if (Number.isInteger(userId) && userId && userId > 0) {
+        try {
+          await api.post(`${process.env.NEXT_PUBLIC_API_URL}/srs/user/logout`, { userId });
+        } catch (error) {
+          console.error("Logout status update failed:", error);
+        }
+      }
+
       sessionStorage.removeItem("token");
       sessionStorage.removeItem("user_session");
       sessionStorage.removeItem("auth_notice");
