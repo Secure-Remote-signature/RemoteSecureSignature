@@ -57,6 +57,15 @@ const getUsers = async (_req, res) => {
         u.userEmail,
         u.userRole,
         u.userStatus,
+        u.lastLoginAt,
+        u.lastActiveAt,
+        CASE
+          WHEN LOWER(COALESCE(u.userStatus, 'inactive')) = 'active'
+            AND u.lastActiveAt IS NOT NULL
+            AND ((julianday('now') - julianday(u.lastActiveAt)) * 86400) <= 120
+          THEN 'active'
+          ELSE 'inactive'
+        END AS effectiveStatus,
         u.userfacultyId,
         f.facultyName
       FROM users u
