@@ -15,22 +15,10 @@ const initialSettings = {
   maxLoginAttempts: 5,
 };
 
-const ToggleSwitch = ({ name, checked, label, description, onChange }: { name: string, checked: boolean, label: string, description: string, onChange: (e: React.ChangeEvent<HTMLInputElement>) => void }) => (
-  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100">
-    <div>
-      <p className="text-sm font-bold text-gray-800">{label}</p>
-      <p className="text-xs text-gray-500 mt-0.5">{description}</p>
-    </div>
-    <label className="relative inline-flex items-center cursor-pointer">
-      <input type="checkbox" name={name} checked={checked} onChange={onChange} className="sr-only peer" />
-      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-    </label>
-  </div>
-);
-
 export default function SystemSettingsPage() {
   const [settings, setSettings] = useState(initialSettings);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
@@ -46,10 +34,11 @@ export default function SystemSettingsPage() {
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
+    setSaveMessage(null);
     
     setTimeout(() => {
       setIsSaving(false);
-      alert("✅ บันทึกการตั้งค่าระบบเรียบร้อยแล้ว\n(การตั้งค่าฮาร์ดแวร์จะมีผลกับคิวงานถัดไป)");
+      setSaveMessage("บันทึกการตั้งค่าระบบเรียบร้อยแล้ว (การตั้งค่าฮาร์ดแวร์จะมีผลกับคิวงานถัดไป)");
     }, 800);
   };
 
@@ -82,7 +71,7 @@ export default function SystemSettingsPage() {
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input type="checkbox" name="maintenanceMode" checked={settings.maintenanceMode} onChange={handleChange} className="sr-only peer" />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-rose-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-600"></div>
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-rose-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-600"></div>
                   </label>
                 </div>
               </div>
@@ -138,9 +127,19 @@ export default function SystemSettingsPage() {
             </div>
           </div>
 
-          <div className="pt-4 flex justify-end gap-4 border-t border-gray-200">
+          <div className="pt-4 border-t border-gray-200 space-y-4">
+            {saveMessage && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+                {saveMessage}
+              </div>
+            )}
+            <div className="flex justify-end gap-4">
             <button 
               type="button" 
+              onClick={() => {
+                setSettings(initialSettings);
+                setSaveMessage(null);
+              }}
               className="px-6 py-3 rounded-xl text-gray-600 hover:bg-gray-100 font-bold transition-colors text-sm"
             >
               ยกเลิกการเปลี่ยนแปลง
@@ -159,6 +158,7 @@ export default function SystemSettingsPage() {
                 "บันทึกการตั้งค่า"
               )}
             </button>
+            </div>
           </div>
 
         </form>
