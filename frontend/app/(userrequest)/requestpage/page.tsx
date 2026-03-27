@@ -26,13 +26,12 @@ export default function RequestDocumentPage() {
     const [isLoading, setIsLoading] = useState(false);
     const [isSubmitted, setIsSubmitted] = useState(false);
     
-    // --- ข้อมูล User และรายชื่ออาจารย์ ---
     const [professors, setProfessors] = useState<Professor[]>([]);
     const [selectedProfId, setSelectedProfId] = useState("");
     const [recipientSearch, setRecipientSearch] = useState("");
     const [currentUserId, setCurrentUserId] = useState("");
 
-    // --- ข้อมูลฟอร์ม ---
+    // --- ข้อมลฟอร์ม ---
     const [formData, setFormData] = useState({
         Name: "",
         LastName: "",
@@ -42,14 +41,12 @@ export default function RequestDocumentPage() {
         details: ""
     });
 
-    // --- ข้อมูลรูปภาพและ Crop ---
     const [image, setImage] = useState<string | null>(null);
     const [isFetchingCamera, setIsFetchingCamera] = useState(false);
     const [crop, setCrop] = useState({ x: 0, y: 0 });
     const [zoom, setZoom] = useState(1);
     const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
 
-    // 1. ดึงข้อมูล User และ รายชื่ออาจารย์ ทันทีที่โหลดหน้า
     useEffect(() => {
         const savedData = sessionStorage.getItem("user_session");
         if (!savedData) {
@@ -79,7 +76,6 @@ export default function RequestDocumentPage() {
                 Role: normalizedRole
             }));
 
-            // Fallback: if session does not have display name, fetch profile directly.
             if (!normalizedName && !normalizedLastName) {
                 void api
                     .get(`${process.env.NEXT_PUBLIC_API_URL}/srs/user/profile/${userId}`)
@@ -140,7 +136,6 @@ export default function RequestDocumentPage() {
         });
     }, [professors, recipientSearch]);
 
-    // 2. ฟังก์ชันอัปโหลดรูป
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files.length > 0) {
             const reader = new FileReader();
@@ -149,7 +144,6 @@ export default function RequestDocumentPage() {
         }
     };
 
-    // 3. ฟังก์ชันสั่งถ่ายรูป (จำลอง)
     const handleCaptureFromCNC = () => {
         setIsFetchingCamera(true);
         setTimeout(() => {
@@ -162,7 +156,6 @@ export default function RequestDocumentPage() {
         setCroppedAreaPixels(croppedAreaPixels);
     }, []);
 
-    // 4. ส่งข้อมูลไป Backend
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!currentUserId) {
@@ -191,7 +184,6 @@ export default function RequestDocumentPage() {
         };
 
         try {
-            // ใช้ axios และดึง URL จาก .env
             const response = await api.post(`${process.env.NEXT_PUBLIC_API_URL}/srs/request/submit`, payload);
             
             if(response.status === 200) {
@@ -230,12 +222,10 @@ export default function RequestDocumentPage() {
                             
                             <form className="p-6 md:p-10 space-y-6">
                                 <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-                                    {/* หัวข้อ - ใช้ col-span-2 เพื่อให้อยู่บรรทัดบนสุดเต็มความกว้าง */}
                                     <p className="col-span-2 text-sm font-bold text-gray-600 mb-1">
                                         รายละเอียดผู้ส่งคำร้อง
                                     </p>
 
-                                    {/* ช่องกรอกชื่อ */}
                                     <div className="flex flex-col gap-1">
                                         <label className="text-[12px] font-semibold text-indigo-500 ml-2">ชื่อจริง</label>
                                         <input 
@@ -248,7 +238,6 @@ export default function RequestDocumentPage() {
                                         />
                                     </div>
 
-                                    {/* ช่องกรอกนามสกุล */}
                                     <div className="flex flex-col gap-1">
                                         <label className="text-[12px] font-semibold text-indigo-500 ml-2">นามสกุล</label>
                                             <input 
@@ -263,7 +252,6 @@ export default function RequestDocumentPage() {
                                     </div>
 
                                 </div>
-                                {/* --- เพิ่ม Dropdown เลือกอาจารย์ --- */}
                                 <div>
                                     <p className="text-sm font-bold text-Slate-gray mb-2">ส่งถึงอาจารย์/เจ้าหน้าที่:</p>
                                     <input
@@ -313,7 +301,6 @@ export default function RequestDocumentPage() {
                         </div>
                     </div>
                 ) : (
-                    /* Step 2: เลือกรูป & Crop */
                     <div className="flex-1 flex flex-col bg-slate-900 relative">
                         {!image ? (
                             <div className="flex-1 flex flex-col items-center justify-center text-white p-6 gap-6">
