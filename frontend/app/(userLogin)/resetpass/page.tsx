@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, Suspense } from 'react';
+import React, { useState, Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Loader2, CheckCircle2 } from 'lucide-react';
 import "@/app/styles/components.css";
@@ -11,6 +11,8 @@ function ResetPassContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const email = searchParams.get('email');
+  const initialExpiry = Number(searchParams.get('expiry') || 300);
+  const initialCooldown = Number(searchParams.get('cooldown') || 0);
   const [otp, setOtp] = useState('');
 
   const [password, setPassword] = useState('');
@@ -18,6 +20,55 @@ function ResetPassContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [otpExpirySec, setOtpExpirySec] = useState(initialExpiry > 0 ? initialExpiry : 300);
+  const [cooldownSec, setCooldownSec] = useState(initialCooldown > 0 ? initialCooldown : 0);
+
+  useEffect(() => {
+    if (cooldownSec <= 0) return;
+    const timer = window.setTimeout(() => setCooldownSec((prev) => Math.max(prev - 1, 0)), 1000);
+    return () => window.clearTimeout(timer);
+  }, [cooldownSec]);
+
+  useEffect(() => {
+    if (otpExpirySec <= 0) return;
+    const timer = window.setTimeout(() => setOtpExpirySec((prev) => Math.max(prev - 1, 0)), 1000);
+    return () => window.clearTimeout(timer);
+  }, [otpExpirySec]);
+
+  const formatCountdown = (sec: number) => {
+    const mins = Math.floor(sec / 60);
+    const secs = sec % 60;
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  };
+
+  const requestOtpAgain = async () => {
+    const normalizedEmail = email?.trim() || '';
+    if (!normalizedEmail || cooldownSec > 0) return;
+
+    setErrorMsg('');
+    setIsLoading(true);
+    try {
+      const response = await api.post(`${process.env.NEXT_PUBLIC_API_URL}/srs/user/request-otp`, {
+        email: normalizedEmail,
+      });
+
+      const payload = response?.data || {};
+      setOtpExpirySec(Number(payload.expiresInSec || 300));
+      setCooldownSec(Number(payload.cooldownSec || 60));
+    } catch (error: unknown) {
+      if (isAxiosError(error) && error.response) {
+        const retryAfter = Number(error.response.data?.retryAfterSec || 0);
+        if (retryAfter > 0) {
+          setCooldownSec(retryAfter);
+        }
+        setErrorMsg(error.response.data?.error || 'ส่ง OTP ไม่สำเร็จ');
+      } else {
+        setErrorMsg('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -143,6 +194,22 @@ function ResetPassContent() {
               maxLength={6}
               className={inputStyle} 
             />
+
+            <div className="mb-3 mt-1 rounded-xl bg-slate-50 p-3 text-sm text-slate-600">
+              {otpExpirySec > 0 ? (
+                <p>OTP จะหมดอายุใน {formatCountdown(otpExpirySec)}</p>
+              ) : (
+                <p className="text-red-500">OTP หมดอายุแล้ว กรุณากดส่ง OTP ใหม่</p>
+              )}
+              <button
+                type="button"
+                onClick={requestOtpAgain}
+                disabled={isLoading || cooldownSec > 0}
+                className="mt-2 font-semibold text-[#4338CA] disabled:text-gray-400"
+              >
+                {cooldownSec > 0 ? `ส่ง OTP ใหม่ได้ใน ${cooldownSec}s` : 'ส่ง OTP ใหม่'}
+              </button>
+            </div>
 
             <input 
               type="password"
