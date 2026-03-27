@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import messagebox
 import requests
-from app_config import build_api_url
+from app_config import build_api_url, build_auth_headers
 
 class PinConfirmPage(tk.Frame):
     def __init__(self, parent, controller):
@@ -106,6 +106,7 @@ class PinConfirmPage(tk.Frame):
                 build_api_url("/srs/user/verify-pin"),
                 json={"userId": user_id, "userPin": self.pin_code},
                 timeout=5,
+                headers=build_auth_headers(self.controller),
             )
         except Exception as exc:
             messagebox.showerror("Connection Error", f"ไม่สามารถตรวจสอบ PIN กับเซิร์ฟเวอร์ได้: {exc}")
