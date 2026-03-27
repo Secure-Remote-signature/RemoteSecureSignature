@@ -4,7 +4,7 @@ import requests
 from PIL import Image, ImageTk, ImageDraw, ImageOps
 from io import BytesIO
 import json
-from app_config import API_BASE_URL
+from app_config import API_BASE_URL, build_auth_headers
 
 class SignaturePage(tk.Frame):
     def __init__(self, parent, controller):
@@ -110,7 +110,7 @@ class SignaturePage(tk.Frame):
 
         try:
             url = f"{self.backend_url}/srs/request/pending/{self.controller.current_user_id}"
-            response = requests.get(url, timeout=5)
+            response = requests.get(url, timeout=5, headers=build_auth_headers(self.controller))
             if response.status_code == 200 and response.json():
                 self.current_request = response.json()
                 self.load_doc_from_request(self.current_request)
