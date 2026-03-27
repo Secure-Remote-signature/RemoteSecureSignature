@@ -97,57 +97,136 @@ async function transitionStatus(db, requestId, toStatus, expectedStatus = null, 
 // backend/controller/request.js
 
 const submitRequest = async (req, res) => {
-    const { docId, subject, documentImage, ownerId, clientId, message, rtsp, camera, signatureArea } = req.body;
+    try {
+        const { docId, subject, documentImage, ownerId, clientId, message, rtsp, camera, signatureArea } = req.body || {};
 
-    const fileName = `${docId}.png`;
-    const filePath = path.join(uploadDir, fileName);
-    const base64Data = documentImage.replace(/^data:image\/\w+;base64,/, "");
+        const headerUserIdRaw = req.headers["x-user-id"];
+        const headerUserId = Number(Array.isArray(headerUserIdRaw) ? headerUserIdRaw[0] : headerUserIdRaw);
+        const clientIdNumber = Number(clientId);
+        const ownerIdNumber = Number(ownerId);
 
-    fs.writeFile(filePath, base64Data, 'base64', async (err) => {
-        if (err) {
-            return res.status(500).json({ error: "Failed to save image" });
+        if (!Number.isInteger(headerUserId) || headerUserId <= 0) {
+            return res.status(401).json({ error: "Unauthorized user context" });
         }
 
-        try {
-            const db = await open({ filename: "./database/remote.db", driver: sqlite3.Database });
+        if (!Number.isInteger(clientIdNumber) || clientIdNumber <= 0) {
+            return res.status(400).json({ error: "Invalid clientId" });
+        }
 
-            const params = [
-                docId,
-                new Date().toISOString(),
-                subject || null,
-                message || "",
-                rtsp || camera || "none",
-                fileName,
-                ownerId,
-                clientId,
-                'Pending',
-                JSON.stringify(signatureArea || null),
-                nowIso(),
-                nowIso()
-            ];
+        if (headerUserId !== clientIdNumber) {
+            return res.status(403).json({ error: "clientId does not match logged-in user" });
+        }
 
-            const lifecycleSql = `
-                INSERT INTO requestSign (
-                    requestNumber, requestDate, requestSubject, requestMessage,
-                    requestRTSP, requestPicture, ownerRequestID,
-                    clientRequestID, requestStatus, signatureArea,
-                    createdAt, updatedAt
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `;
+        if (!Number.isInteger(ownerIdNumber) || ownerIdNumber <= 0) {
+            return res.status(400).json({ error: "Invalid ownerId" });
+        }
 
-            const result = await db.run(lifecycleSql, params);
+        if (ownerIdNumber === clientIdNumber) {
+            return res.status(400).json({ error: "Cannot send request to yourself" });
+        }
+
+        const normalizedDocId = String(docId || `DOC-${Date.now()}`)
+            .trim()
+            .replace(/[^a-zA-Z0-9_-]/g, "");
+        if (!normalizedDocId) {
+            return res.status(400).json({ error: "Invalid document id" });
+        }
+
+        const normalizedSubject = String(subject || "").trim();
+        const normalizedMessage = String(message || "").trim();
+        if (!normalizedSubject) {
+            return res.status(400).json({ error: "Subject is required" });
+        }
+        if (!normalizedMessage) {
+            return res.status(400).json({ error: "Message is required" });
+        }
+
+        if (normalizedSubject.length > 255 || normalizedMessage.length > 5000) {
+            return res.status(400).json({ error: "Request content is too long" });
+        }
+
+        const imagePrefixMatch = String(documentImage || "").match(/^data:image\/(png|jpeg|jpg|webp);base64,/i);
+        if (!imagePrefixMatch) {
+            return res.status(400).json({ error: "Invalid image format" });
+        }
+
+        const base64Data = String(documentImage).replace(/^data:image\/\w+;base64,/, "");
+        if (!base64Data) {
+            return res.status(400).json({ error: "Empty image data" });
+        }
+
+        const db = await open({ filename: "./database/remote.db", driver: sqlite3.Database });
+
+        const requester = await db.get(
+            "SELECT userId, userfacultyId FROM users WHERE userId = ?",
+            [clientIdNumber]
+        );
+        if (!requester) {
             await db.close();
-            
-            res.status(200).json({
-                message: "Success",
-                requestId: result.lastID,
-                requestNumber: docId
-            });
-        } catch (dbErr) {
-            console.error("❌ SQL Error Details:", dbErr.message);
-            res.status(500).json({ error: "Database error: " + dbErr.message });
+            return res.status(404).json({ error: "Requester not found" });
         }
-    });
+
+        const receiver = await db.get(
+            "SELECT userId, userRole, userfacultyId FROM users WHERE userId = ?",
+            [ownerIdNumber]
+        );
+        if (!receiver) {
+            await db.close();
+            return res.status(404).json({ error: "Recipient not found" });
+        }
+
+        const receiverRole = String(receiver.userRole || "").toLowerCase();
+        if (!["admin", "staff", "professor"].includes(receiverRole)) {
+            await db.close();
+            return res.status(400).json({ error: "Recipient role is not allowed" });
+        }
+
+        if (Number(requester.userfacultyId) !== Number(receiver.userfacultyId)) {
+            await db.close();
+            return res.status(403).json({ error: "Cannot send request outside your faculty" });
+        }
+
+        const fileExt = imagePrefixMatch[1].toLowerCase() === "jpeg" ? "jpg" : imagePrefixMatch[1].toLowerCase();
+        const fileName = `${normalizedDocId}-${Date.now()}.${fileExt}`;
+        const filePath = path.join(uploadDir, fileName);
+        await fs.promises.writeFile(filePath, base64Data, "base64");
+
+        const params = [
+            normalizedDocId,
+            new Date().toISOString(),
+            normalizedSubject,
+            normalizedMessage,
+            rtsp || camera || "none",
+            fileName,
+            ownerIdNumber,
+            clientIdNumber,
+            'Pending',
+            JSON.stringify(signatureArea || null),
+            nowIso(),
+            nowIso()
+        ];
+
+        const lifecycleSql = `
+            INSERT INTO requestSign (
+                requestNumber, requestDate, requestSubject, requestMessage,
+                requestRTSP, requestPicture, ownerRequestID,
+                clientRequestID, requestStatus, signatureArea,
+                createdAt, updatedAt
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `;
+
+        const result = await db.run(lifecycleSql, params);
+        await db.close();
+
+        return res.status(200).json({
+            message: "Success",
+            requestId: result.lastID,
+            requestNumber: normalizedDocId
+        });
+    } catch (error) {
+        console.error("❌ submitRequest error:", error);
+        return res.status(500).json({ error: "Failed to submit request" });
+    }
 };
 const getPendingForProfessor = async (req, res) => {
     try {
