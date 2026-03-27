@@ -1,8 +1,11 @@
 import { open } from "sqlite";
 import sqlite3 from "sqlite3";
+import jwt from "jsonwebtoken";
+import "dotenv/config";
 import { getClientIp, writeActivityLog } from "../lib/activityLog.js";
 
 const sqlite3Verbose = sqlite3.verbose();
+const JWT_SECRET = String(process.env.JWT_SECRET || "dev-secret-change-me");
 
 async function logAuthDeny(req, { status = "FAILED", details = "Unauthorized", action = "ACCESS_DENIED" } = {}) {
   try {
@@ -52,11 +55,27 @@ export async function requireAuth(req, res, next) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = {
+      id: Number(decoded?.sub || decoded?.id || 0),
+      role: String(decoded?.role || ""),
+      email: String(decoded?.email || ""),
+      raw: decoded,
+    };
+  } catch {
+    await logAuthDeny(req, {
+      action: "UNAUTHORIZED",
+      details: "Invalid or expired token",
+    });
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
   return next();
 }
 
 export async function requireAdminRole(req, res, next) {
-  const role = String(req.headers["x-user-role"] || "").toLowerCase();
+  const role = String(req.user?.role || "").toLowerCase();
   if (!role.includes("admin")) {
     await logAuthDeny(req, {
       action: "FORBIDDEN",
