@@ -2,7 +2,7 @@ import tkinter as tk
 from tkinter import messagebox
 
 import requests
-from app_config import build_api_url
+from app_config import build_api_url, build_auth_headers
 
 class SettingPage(tk.Frame):
     def __init__(self, parent, controller):
@@ -76,7 +76,7 @@ class SettingPage(tk.Frame):
         api_url = build_api_url(f"/srs/user/profile/{user_id}")
 
         try:
-            response = requests.get(api_url, timeout=5)
+            response = requests.get(api_url, timeout=5, headers=build_auth_headers(self.controller))
             if response.status_code == 200:
                 data = response.json()
 
@@ -138,7 +138,7 @@ class SettingPage(tk.Frame):
         }
 
         try:
-            response = requests.put(api_url, json=payload, timeout=5)
+            response = requests.put(api_url, json=payload, timeout=5, headers=build_auth_headers(self.controller))
             if response.status_code == 200:
                 messagebox.showinfo("สำเร็จ", "อัปเดตข้อมูลส่วนตัวเรียบร้อยแล้ว!")
                 self.controller.current_user = payload["userName"]
@@ -153,7 +153,7 @@ class SettingPage(tk.Frame):
             api_url = build_api_url(f"/srs/user/deluser/{user_id}")
 
             try:
-                response = requests.delete(api_url, timeout=5)
+                response = requests.delete(api_url, timeout=5, headers=build_auth_headers(self.controller))
                 if response.status_code == 200:
                     messagebox.showinfo("สำเร็จ", "ลบบัญชีเรียบร้อยแล้ว")
                     self.controller.show_frame("LoginPage") # เด้งกลับไปหน้า Login
