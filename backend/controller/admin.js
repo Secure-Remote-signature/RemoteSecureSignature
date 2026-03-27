@@ -695,13 +695,70 @@ const getJobHistory = async (req, res) => {
 
 const getAuditLogs = async (req, res) => {
   try {
+    const parseMultiFilter = (input) => {
+      const raw = Array.isArray(input) ? input.join(",") : String(input || "");
+      return raw
+        .split(",")
+        .map((item) => item.trim().toUpperCase())
+        .filter((item) => item && item !== "ALL");
+    };
+
     const rawLimit = Number(req.query.limit);
-    const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(Math.floor(rawLimit), 500) : 200;
+    const rawPage = Number(req.query.page);
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(Math.floor(rawLimit), 200) : 20;
+    const page = Number.isFinite(rawPage) && rawPage > 0 ? Math.floor(rawPage) : 1;
+    const offset = (page - 1) * limit;
+
+    const actionFilters = parseMultiFilter(req.query.action);
+    const statusFilters = parseMultiFilter(req.query.status);
+    const searchQuery = String(req.query.q || "").trim();
+
+    const whereClauses = [];
+    const whereParams = [];
+
+    const actionClause = actionFilters.length > 0
+      ? `UPPER(COALESCE(action, '')) IN (${actionFilters.map(() => "?").join(",")})`
+      : "";
+    const statusClause = statusFilters.length > 0
+      ? `UPPER(COALESCE(status, '')) IN (${statusFilters.map(() => "?").join(",")})`
+      : "";
+
+    if (actionClause && statusClause) {
+      whereClauses.push(`(${actionClause} OR ${statusClause})`);
+      whereParams.push(...actionFilters, ...statusFilters);
+    } else if (actionClause) {
+      whereClauses.push(actionClause);
+      whereParams.push(...actionFilters);
+    } else if (statusClause) {
+      whereClauses.push(statusClause);
+      whereParams.push(...statusFilters);
+    }
+
+    if (searchQuery) {
+      const keyword = `%${searchQuery}%`;
+      whereClauses.push(`(
+        COALESCE(actorEmail, '') LIKE ?
+        OR COALESCE(action, '') LIKE ?
+        OR COALESCE(targetDevice, '') LIKE ?
+        OR COALESCE(ipAddress, '') LIKE ?
+        OR COALESCE(details, '') LIKE ?
+      )`);
+      whereParams.push(keyword, keyword, keyword, keyword, keyword);
+    }
+
+    const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
 
     const db = await open({
       filename: "./database/remote.db",
       driver: sqlite3Verbose.Database,
     });
+
+    const totalRow = await db.get(
+      `SELECT COUNT(*) AS total FROM activityLogs ${whereSql}`,
+      whereParams,
+    );
+    const total = Number(totalRow?.total || 0);
+    const totalPages = Math.max(1, Math.ceil(total / limit));
 
     const logs = await db.all(
       `
@@ -715,10 +772,11 @@ const getAuditLogs = async (req, res) => {
         status,
         details
       FROM activityLogs
+      ${whereSql}
       ORDER BY datetime(eventAt) DESC, logId DESC
-      LIMIT ?
+      LIMIT ? OFFSET ?
       `,
-      [limit],
+      [...whereParams, limit, offset],
     );
 
     await db.close();
@@ -734,7 +792,20 @@ const getAuditLogs = async (req, res) => {
       details: row.details || "-",
     }));
 
-    return res.status(200).json({ logs: mapped });
+    return res.status(200).json({
+      logs: mapped,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+      },
+      filters: {
+        action: actionFilters,
+        status: statusFilters,
+        q: searchQuery,
+      },
+    });
   } catch (error) {
     console.error("Admin audit logs error:", error);
     return res.status(500).json({ error: "Internal server error" });
