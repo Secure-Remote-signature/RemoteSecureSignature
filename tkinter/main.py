@@ -19,6 +19,7 @@ class MainApp(tk.Tk):
         self.current_user_id = None
         self.current_user = None
         self.user_role = None
+        self.auth_token = None
         
         # --- Window Setup ---
         self.title("Secure Remote Signature")
@@ -65,6 +66,7 @@ class MainApp(tk.Tk):
             self.current_user_id = None
             self.current_user = None
             self.user_role = None
+            self.auth_token = None
             self.show_frame("LoginPage")
 
     def show_frame(self, page_name, data=None):
