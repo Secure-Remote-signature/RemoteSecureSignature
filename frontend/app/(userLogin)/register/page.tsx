@@ -186,6 +186,7 @@ export default function Register() {
                 className={inputStyle}
               >
                 <option value="">--- ตำแหน่ง ---</option>
+                <option value="superadmin">ซูเปอร์แอดมิน</option>
                 <option value="professor">อาจารย์</option>
                 <option value="staff">เจ้าหน้าที่</option>
                 <option value="student">นักศึกษา</option>
