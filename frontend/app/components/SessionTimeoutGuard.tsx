@@ -25,6 +25,8 @@ function getTimeoutMs() {
 export default function SessionTimeoutGuard() {
   const router = useRouter();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastHeartbeatAtRef = useRef(0);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -38,6 +40,32 @@ export default function SessionTimeoutGuard() {
       sessionStorage.removeItem("user_session");
     };
 
+    const getCurrentUserId = () => {
+      const sessionRaw = sessionStorage.getItem("user_session");
+      if (!sessionRaw) return null;
+
+      try {
+        const parsed = JSON.parse(sessionRaw);
+        const userId = Number(parsed?.id ?? parsed?.userId);
+        if (!Number.isInteger(userId) || userId <= 0) return null;
+        return userId;
+      } catch {
+        return null;
+      }
+    };
+
+    const sendHeartbeat = async () => {
+      const userId = getCurrentUserId();
+      if (!userId || isLoggingOut) return;
+
+      try {
+        await api.post(`${process.env.NEXT_PUBLIC_API_URL}/srs/user/heartbeat`, { userId });
+        lastHeartbeatAtRef.current = Date.now();
+      } catch {
+        // Best-effort keepalive only.
+      }
+    };
+
     const triggerAutoLogout = async () => {
       if (isLoggingOut) return;
       isLoggingOut = true;
@@ -48,7 +76,7 @@ export default function SessionTimeoutGuard() {
       if (sessionRaw) {
         try {
           const parsed = JSON.parse(sessionRaw);
-          userId = Number(parsed?.id);
+          userId = Number(parsed?.id ?? parsed?.userId);
         } catch {
           userId = null;
         }
@@ -71,6 +99,12 @@ export default function SessionTimeoutGuard() {
       if (timerRef.current) {
         clearTimeout(timerRef.current);
       }
+
+      const now = Date.now();
+      if (now - lastHeartbeatAtRef.current >= 45000) {
+        void sendHeartbeat();
+      }
+
       timerRef.current = setTimeout(() => {
         void triggerAutoLogout();
       }, timeoutMs);
@@ -79,7 +113,12 @@ export default function SessionTimeoutGuard() {
     const sessionRaw = sessionStorage.getItem("user_session");
     if (!sessionRaw) return;
 
+    void sendHeartbeat();
     restartTimer();
+    heartbeatIntervalRef.current = setInterval(() => {
+      void sendHeartbeat();
+    }, 60000);
+
     ACTIVITY_EVENTS.forEach((eventName) => {
       window.addEventListener(eventName, restartTimer, { passive: true });
     });
@@ -87,6 +126,9 @@ export default function SessionTimeoutGuard() {
     return () => {
       if (timerRef.current) {
         clearTimeout(timerRef.current);
+      }
+      if (heartbeatIntervalRef.current) {
+        clearInterval(heartbeatIntervalRef.current);
       }
       ACTIVITY_EVENTS.forEach((eventName) => {
         window.removeEventListener(eventName, restartTimer);
