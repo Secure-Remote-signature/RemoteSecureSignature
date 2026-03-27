@@ -93,6 +93,27 @@ async function initializeDatabase() {
     await db.exec("CREATE INDEX IF NOT EXISTS idx_request_status_date ON requestSign(requestStatus, requestDate DESC)");
     await db.exec("CREATE INDEX IF NOT EXISTS idx_request_cnc_queue ON requestSign(requestStatus, cncDispatchedAt, cncCompletedAt, requestId ASC)");
 
+    await db.exec(`
+       CREATE TABLE IF NOT EXISTS activityLogs (
+         logId INTEGER PRIMARY KEY AUTOINCREMENT,
+         eventAt DATETIME NOT NULL,
+         actorUserId INTEGER,
+         actorEmail TEXT,
+         action TEXT NOT NULL,
+         targetType TEXT,
+         targetId TEXT,
+         targetDevice TEXT,
+         ipAddress TEXT,
+         status TEXT,
+         details TEXT,
+         metadata TEXT,
+         FOREIGN KEY (actorUserId) REFERENCES users(userId)
+       );
+    `);
+
+    await db.exec("CREATE INDEX IF NOT EXISTS idx_activity_eventAt ON activityLogs(eventAt DESC)");
+    await db.exec("CREATE INDEX IF NOT EXISTS idx_activity_action ON activityLogs(action, eventAt DESC)");
+
     const facultyCheck = await db.get("SELECT COUNT(*) as count FROM faculties");
     if (facultyCheck.count === 0) {
       const defaultFaculties = [
