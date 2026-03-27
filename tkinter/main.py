@@ -11,6 +11,8 @@ from userSigning.document_review import DocumentReviewPage
 from userLogin.forgot_password import ForgotPasswordPage
 from userLogin.reset_password import ResetPasswordPage
 from userLogin.change_password import ChangePasswordPage
+from userLogin.forgot_pin import ForgotPinPage
+from userLogin.change_pin import ChangePinPage
 
 class MainApp(tk.Tk):
     def __init__(self):
@@ -46,7 +48,9 @@ class MainApp(tk.Tk):
             ExecutionPage,
             ForgotPasswordPage,
             ResetPasswordPage,
-            ChangePasswordPage
+            ChangePasswordPage,
+            ForgotPinPage,
+            ChangePinPage,
         )
 
         for PageClass in page_list:
