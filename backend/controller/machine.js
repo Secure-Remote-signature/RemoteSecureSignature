@@ -2,6 +2,7 @@ import { open } from "sqlite";
 import sqlite3 from "sqlite3";
 import { getClientIp, writeActivityLog } from "../lib/activityLog.js";
 import { fetchMachineStatus, sendMachineCommand } from "../lib/machineGateway.js";
+import { broadcastRealtimeEvent } from "../lib/realtime.js";
 
 const sqlite3Verbose = sqlite3.verbose();
 
@@ -46,19 +47,44 @@ const controlMachine = async (req, res) => {
       driver: sqlite3Verbose.Database,
     });
 
-    const actorIdRaw = req.headers["x-user-id"];
-    const actorId = Number(Array.isArray(actorIdRaw) ? actorIdRaw[0] : actorIdRaw);
-    const actor = Number.isInteger(actorId)
+    const actorId = Number(req.user?.id || 0);
+    const actor = Number.isInteger(actorId) && actorId > 0
       ? await db.get("SELECT userEmail FROM users WHERE userId = ?", [actorId])
       : null;
+
+    const commandId = `CMD-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+
+    broadcastRealtimeEvent("machine.command", {
+      commandId,
+      stage: "sent",
+      status: "SENT",
+      action: normalizedAction,
+      deviceId: String(deviceId),
+      user: actor?.userEmail || "-",
+      message: `Sending command ${normalizedAction} to ${deviceId}`,
+    });
 
     const gatewayResult = await sendMachineCommand({
       deviceId: String(deviceId),
       action: normalizedAction,
     });
 
+    broadcastRealtimeEvent("machine.command", {
+      commandId,
+      stage: gatewayResult.ok ? "ack" : "failed",
+      status: gatewayResult.ok ? "ACK" : "FAILED",
+      action: normalizedAction,
+      deviceId: String(deviceId),
+      user: actor?.userEmail || "-",
+      message: gatewayResult.ok
+        ? `Command ${normalizedAction} acknowledged by gateway`
+        : gatewayResult.message || `Command ${normalizedAction} failed`,
+      gatewayStatusCode: gatewayResult.statusCode,
+      source: gatewayResult.source,
+    });
+
     await writeActivityLog(db, {
-      actorUserId: Number.isInteger(actorId) ? actorId : null,
+      actorUserId: Number.isInteger(actorId) && actorId > 0 ? actorId : null,
       actorEmail: actor?.userEmail || null,
       action: "MACHINE_CONTROL",
       targetType: "MACHINE",
@@ -73,6 +99,7 @@ const controlMachine = async (req, res) => {
         command: normalizedAction,
         source: gatewayResult.source,
         gatewayStatusCode: gatewayResult.statusCode,
+        commandId,
       },
     });
 
