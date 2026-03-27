@@ -276,8 +276,14 @@ export default function HistoryLogPage() {
     }, [canvasRef, log]);
 
     return (
-      <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden">
+      <div
+        className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
+        onClick={onClose}
+      >
+        <div
+          className="bg-white rounded-2xl w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
           <div className="px-4 py-3 border-b flex items-center justify-between">
             <div className="text-sm pi:text-base text-gray-700">
               {log.docName} | สถานะ: <span className="font-bold">{log.rawStatus}</span>
