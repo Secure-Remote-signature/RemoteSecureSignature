@@ -16,6 +16,8 @@ user.get('/profile/:id', requireAuth, userController.getUserProfile);
 user.put('/change-password/:id', requireAuth, userController.changePassword);
 user.post('/request-otp', userController.requestOTP);
 user.post('/verify-otp', userController.verifyOTP);
+user.post('/reset-pin-with-otp', userController.resetPinWithOtp);
+user.put('/change-pin/:id', requireAuth, userController.changePinWithOtp);
 user.get('/faculties', userController.getFaculties);
 user.get('/staff', userController.getAllStaff);
 
