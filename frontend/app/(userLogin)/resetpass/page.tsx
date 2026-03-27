@@ -22,21 +22,29 @@ function ResetPassContent() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(''); // เคลียร์ error เก่าก่อน
+    const normalizedEmail = email?.trim() || '';
+    const normalizedOtp = otp.trim();
 
-    if (!email) {
+    if (!normalizedEmail) {
       setErrorMsg('ไม่พบอีเมลสำหรับรีเซ็ตรหัสผ่าน กรุณากลับไปขอ OTP ใหม่');
       return;
     }
 
-    if (!otp) {
+    if (!normalizedOtp) {
       setErrorMsg('กรุณากรอกรหัส OTP');
       return;
     }
 
-    // if (password.length < 6) {
-    //   setErrorMsg('รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษร');
-    //   return;
-    // }
+    if (normalizedOtp.length !== 6) {
+      setErrorMsg('รหัส OTP ต้องมี 6 หลัก');
+      return;
+    }
+
+    if (password.length < 6) {
+      setErrorMsg('รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษร');
+      return;
+    }
+
     if (password !== confirmPassword) {
       setErrorMsg('รหัสผ่านและการยืนยันรหัสผ่านไม่ตรงกัน');
       return;
@@ -46,8 +54,8 @@ function ResetPassContent() {
 
     try {
       await api.post(`${process.env.NEXT_PUBLIC_API_URL}/srs/user/verify-otp`, {
-        email,
-        otp,
+        email: normalizedEmail,
+        otp: normalizedOtp,
         newPassword: password,
       });
 
@@ -131,6 +139,8 @@ function ResetPassContent() {
               placeholder="รหัส OTP"
               value={otp}
               onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+              inputMode="numeric"
+              maxLength={6}
               className={inputStyle} 
             />
 
