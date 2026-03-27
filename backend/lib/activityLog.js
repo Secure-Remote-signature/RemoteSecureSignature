@@ -1,3 +1,5 @@
+import { broadcastRealtimeEvent } from "./realtime.js";
+
 export function getClientIp(req) {
   const forwarded = req.headers["x-forwarded-for"];
   if (Array.isArray(forwarded) && forwarded.length > 0) {
@@ -44,7 +46,7 @@ export async function writeActivityLog(db, payload = {}) {
       eventAt = new Date().toISOString(),
     } = payload;
 
-    await db.run(
+    const result = await db.run(
       `
       INSERT INTO activityLogs (
         eventAt,
@@ -75,6 +77,19 @@ export async function writeActivityLog(db, payload = {}) {
         metadata ? JSON.stringify(metadata) : null,
       ],
     );
+
+    broadcastRealtimeEvent("audit-log.created", {
+      id: `LOG-${result?.lastID || ""}`,
+      timestamp: eventAt,
+      user: actorEmail || "-",
+      action: String(action || "UNKNOWN"),
+      targetDevice: targetDevice || "-",
+      ipAddress: String(ipAddress || "-"),
+      status: String(status || "WARNING").toUpperCase(),
+      details: String(details || ""),
+      targetType: targetType || null,
+      targetId: targetId || null,
+    });
   } catch (error) {
     console.error("writeActivityLog error:", error);
   }
