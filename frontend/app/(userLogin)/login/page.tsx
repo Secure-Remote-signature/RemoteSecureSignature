@@ -1,7 +1,7 @@
 'use client';
 import "@/app/styles/components.css";
 import { useRouter } from 'next/navigation';
-import axios from "axios";
+import api, { isAxiosError } from "@/app/lib/api";
 import { useEffect, useState } from "react";
 
 export default function Login() {
@@ -51,10 +51,17 @@ export default function Login() {
     setIsLoading(true);
     setErrorMsg("");
 
+    const normalizedEmail = email.trim();
+    if (!normalizedEmail || !password) {
+      setErrorMsg("กรุณากรอกอีเมลและรหัสผ่านให้ครบถ้วน");
+      setIsLoading(false);
+      return;
+    }
+
     try {
       const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/srs/user/login`;
-      const response = await axios.post(apiUrl, {
-        userEmail: email,
+      const response = await api.post(apiUrl, {
+        userEmail: normalizedEmail,
         userPassword: password,
       });
 
@@ -81,8 +88,13 @@ export default function Login() {
     } catch (error: unknown) {
       console.error("เกิดข้อผิดพลาดในการเข้าสู่ระบบ", error);
       
-      if(axios.isAxiosError(error) && error.response) {
-        setErrorMsg(error.response.data?.detail || error.response.data?.message || error.response.data?.error || "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง");
+      if(isAxiosError(error) && error.response) {
+        setErrorMsg(
+          error.response.data?.detail ||
+          error.response.data?.message ||
+          error.response.data?.error ||
+          "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง",
+        );
       } else {
         setErrorMsg("เกิดข้อผิดพลาดในการเชื่อมต่อกับเซิร์ฟเวอร์");
       }
