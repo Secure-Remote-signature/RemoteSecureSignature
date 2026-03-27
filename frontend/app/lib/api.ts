@@ -17,29 +17,11 @@ const AUTH_PAGES = ['/login', '/forgotpass', '/resetpass', '/register', '/otp'];
 api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
     const token = sessionStorage.getItem('token');
-    const sessionRaw = sessionStorage.getItem('user_session');
-    let session: { role?: string; id?: number | string } | null = null;
-
-    if (sessionRaw) {
-      try {
-        session = JSON.parse(sessionRaw);
-      } catch {
-        session = null;
-      }
-    }
 
     config.headers = config.headers ?? {};
 
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
-    }
-
-    if (session?.role) {
-      config.headers['x-user-role'] = String(session.role);
-    }
-
-    if (session?.id !== undefined && session?.id !== null) {
-      config.headers['x-user-id'] = String(session.id);
     }
   }
   return config;
