@@ -1,5 +1,6 @@
 import { open } from "sqlite";
 import sqlite3 from "sqlite3";
+import { getClientIp, writeActivityLog } from "../lib/activityLog.js";
 
 const sqlite3Verbose = sqlite3.verbose();
 
@@ -9,6 +10,15 @@ const getDashboardSummary = async (_req, res) => {
       filename: "./database/remote.db",
       driver: sqlite3Verbose.Database,
     });
+
+    const beforeUser = await db.get(
+      `
+      SELECT userName, userLastname, userEmail, userRole, userPhone, userfacultyId, userPassword, userPin
+      FROM users
+      WHERE userId = ?
+      `,
+      [targetUserId],
+    );
 
     const [pending, claimed, signing, signed, rejected] = await Promise.all([
       db.get("SELECT COUNT(*) AS total FROM requestSign WHERE requestStatus = 'Pending'"),
@@ -130,6 +140,20 @@ const createUser = async (req, res) => {
 
     await db.run(`UPDATE users SET userStatus = 'inactive' WHERE userId = ?`, [result.lastID]);
 
+    const actorIdRaw = req.headers["x-user-id"];
+    const actorId = Number(Array.isArray(actorIdRaw) ? actorIdRaw[0] : actorIdRaw);
+    const actor = Number.isInteger(actorId) ? await db.get("SELECT userEmail FROM users WHERE userId = ?", [actorId]) : null;
+    await writeActivityLog(db, {
+      actorUserId: Number.isInteger(actorId) ? actorId : null,
+      actorEmail: actor?.userEmail || null,
+      action: "ACCOUNT_CREATE",
+      targetType: "USER",
+      targetId: String(result.lastID),
+      ipAddress: getClientIp(req),
+      status: "SUCCESS",
+      details: `Admin created user ${String(userEmail).trim()}`,
+    });
+
     await db.close();
     return res.status(201).json({ message: "User created successfully", userId: result.lastID });
   } catch (error) {
@@ -203,6 +227,50 @@ const updateUser = async (req, res) => {
       ],
     );
 
+    const actorIdRaw = req.headers["x-user-id"];
+    const actorId = Number(Array.isArray(actorIdRaw) ? actorIdRaw[0] : actorIdRaw);
+    const actor = Number.isInteger(actorId) ? await db.get("SELECT userEmail FROM users WHERE userId = ?", [actorId]) : null;
+    const target = await db.get("SELECT userEmail FROM users WHERE userId = ?", [targetUserId]);
+
+    const changedFields = [];
+    if (beforeUser) {
+      const nextValues = {
+        userName: String(userName).trim(),
+        userLastname: String(userLastname).trim(),
+        userEmail: String(userEmail).trim(),
+        userRole: String(userRole).trim(),
+        userPhone: userPhone ? String(userPhone).trim() : null,
+        userfacultyId: facultyId,
+        userPassword: userPassword ? String(userPassword) : beforeUser.userPassword,
+        userPin: userPin ? String(userPin).trim() : beforeUser.userPin,
+      };
+
+      if (String(beforeUser.userName ?? "") !== String(nextValues.userName ?? "")) changedFields.push("userName");
+      if (String(beforeUser.userLastname ?? "") !== String(nextValues.userLastname ?? "")) changedFields.push("userLastname");
+      if (String(beforeUser.userEmail ?? "") !== String(nextValues.userEmail ?? "")) changedFields.push("userEmail");
+      if (String(beforeUser.userRole ?? "") !== String(nextValues.userRole ?? "")) changedFields.push("userRole");
+      if (String(beforeUser.userPhone ?? "") !== String(nextValues.userPhone ?? "")) changedFields.push("userPhone");
+      if (Number(beforeUser.userfacultyId ?? 0) !== Number(nextValues.userfacultyId ?? 0)) changedFields.push("userfacultyId");
+      if (String(beforeUser.userPassword ?? "") !== String(nextValues.userPassword ?? "")) changedFields.push("userPassword");
+      if (String(beforeUser.userPin ?? "") !== String(nextValues.userPin ?? "")) changedFields.push("userPin");
+    }
+
+    await writeActivityLog(db, {
+      actorUserId: Number.isInteger(actorId) ? actorId : null,
+      actorEmail: actor?.userEmail || null,
+      action: "ACCOUNT_UPDATE",
+      targetType: "USER",
+      targetId: String(targetUserId),
+      ipAddress: getClientIp(req),
+      status: result.changes > 0 ? "SUCCESS" : "FAILED",
+      details: result.changes > 0
+        ? `Admin updated user ${target?.userEmail || targetUserId}${changedFields.length > 0 ? ` (${changedFields.join(", ")})` : ""}`
+        : `Admin failed to update user ${targetUserId}`,
+      metadata: {
+        changedFields,
+      },
+    });
+
     await db.close();
 
     if (result.changes === 0) {
@@ -241,6 +309,23 @@ const deleteUser = async (req, res) => {
     });
 
     const result = await db.run("DELETE FROM users WHERE userId = ?", [targetUserId]);
+
+    const actorIdRaw = req.headers["x-user-id"];
+    const actorId = Number(Array.isArray(actorIdRaw) ? actorIdRaw[0] : actorIdRaw);
+    const actor = Number.isInteger(actorId) ? await db.get("SELECT userEmail FROM users WHERE userId = ?", [actorId]) : null;
+    await writeActivityLog(db, {
+      actorUserId: Number.isInteger(actorId) ? actorId : null,
+      actorEmail: actor?.userEmail || null,
+      action: "ACCOUNT_DELETE",
+      targetType: "USER",
+      targetId: String(targetUserId),
+      ipAddress: getClientIp(req),
+      status: result.changes > 0 ? "SUCCESS" : "FAILED",
+      details: result.changes > 0
+        ? `Admin deleted user ${targetUserId}`
+        : `Admin failed to delete user ${targetUserId}`,
+    });
+
     await db.close();
 
     if (result.changes === 0) {
@@ -254,6 +339,112 @@ const deleteUser = async (req, res) => {
   }
 };
 
+const getJobHistory = async (req, res) => {
+  try {
+    const rawLimit = Number(req.query.limit);
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(Math.floor(rawLimit), 500) : 200;
+
+    const db = await open({
+      filename: "./database/remote.db",
+      driver: sqlite3Verbose.Database,
+    });
+
+    const rows = await db.all(
+      `
+      SELECT
+        r.requestId,
+        r.requestNumber,
+        r.requestDate,
+        r.requestSubject,
+        r.requestMessage,
+        r.requestStatus,
+        r.requestRTSP,
+        r.requestPicture,
+        r.rejectReason,
+        r.signatureCoordinates,
+        r.createdAt,
+        r.updatedAt,
+        r.claimedAt,
+        r.startedAt,
+        r.completedAt,
+        r.cncDispatchedAt,
+        r.cncCompletedAt,
+        r.cncAttempts,
+        r.cncLastError,
+        r.stateVersion,
+        r.ownerRequestID,
+        r.clientRequestID,
+        client.userName AS clientName,
+        client.userLastname AS clientLastName,
+        owner.userName AS ownerName,
+        owner.userLastname AS ownerLastName,
+        f.facultyName AS facultyName
+      FROM requestSign r
+      LEFT JOIN users client ON client.userId = r.clientRequestID
+      LEFT JOIN users owner ON owner.userId = r.ownerRequestID
+      LEFT JOIN faculties f ON f.facultyId = owner.userfacultyId
+      ORDER BY r.requestId DESC
+      LIMIT ?
+      `,
+      [limit],
+    );
+
+    await db.close();
+    return res.status(200).json({ jobs: rows });
+  } catch (error) {
+    console.error("Admin job history error:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+const getAuditLogs = async (req, res) => {
+  try {
+    const rawLimit = Number(req.query.limit);
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(Math.floor(rawLimit), 500) : 200;
+
+    const db = await open({
+      filename: "./database/remote.db",
+      driver: sqlite3Verbose.Database,
+    });
+
+    const logs = await db.all(
+      `
+      SELECT
+        logId,
+        eventAt,
+        actorEmail,
+        action,
+        targetDevice,
+        ipAddress,
+        status,
+        details
+      FROM activityLogs
+      ORDER BY datetime(eventAt) DESC, logId DESC
+      LIMIT ?
+      `,
+      [limit],
+    );
+
+    await db.close();
+
+    const mapped = logs.map((row) => ({
+      id: `LOG-${row.logId}`,
+      timestamp: row.eventAt,
+      user: row.actorEmail || "-",
+      action: row.action || "UNKNOWN",
+      targetDevice: row.targetDevice || "-",
+      ipAddress: row.ipAddress || "-",
+      status: String(row.status || "WARNING").toUpperCase(),
+      details: row.details || "-",
+    }));
+
+    return res.status(200).json({ logs: mapped });
+  } catch (error) {
+    console.error("Admin audit logs error:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+};
+
 export default {
   getDashboardSummary,
   healthCheck,
@@ -261,4 +452,6 @@ export default {
   createUser,
   updateUser,
   deleteUser,
+  getJobHistory,
+  getAuditLogs,
 };
