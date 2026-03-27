@@ -31,9 +31,10 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     if (isAdmin) {
       return [
         { name: 'แอดมินแดชบอร์ด', href: '/admin/dashboard', icon: Shield },
-        { name: 'จัดการผู้ใช้', href: '/admin/users', icon: Users },
-        { name: 'ประวัติการลงนาม', href: '/logpage', icon: History },
-        { name: 'การตั้งค่า', href: '/SettingPage', icon: Settings },
+        { name: 'จัดการผู้ใช้', href: '/admin/usersManagement', icon: Users },
+        { name: 'ประวัติการทำงาน', href: '/admin/auditLog', icon: History },
+        { name: 'จัดการเครื่องจักร', href: '/admin/cncManagement', icon: FilePen },
+        { name: 'การตั้งค่า', href: '/admin/systemSetting', icon: Settings },
       ];
     }
 
