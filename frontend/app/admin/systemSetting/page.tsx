@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import api, { isAxiosError } from "@/app/lib/api";
 
 const initialSettings = {
   maintenanceMode: false,
@@ -17,8 +18,31 @@ const initialSettings = {
 
 export default function SystemSettingsPage() {
   const [settings, setSettings] = useState(initialSettings);
+  const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        setLoading(true);
+        setErrorMsg(null);
+        const res = await api.get(`${process.env.NEXT_PUBLIC_API_URL}/srs/admin/system-settings`);
+        setSettings({ ...initialSettings, ...(res.data?.settings || {}) });
+      } catch (error: unknown) {
+        if (isAxiosError(error) && error.response) {
+          setErrorMsg(error.response.data?.error || "โหลดการตั้งค่าไม่สำเร็จ");
+        } else {
+          setErrorMsg("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้");
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void loadSettings();
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
@@ -31,15 +55,25 @@ export default function SystemSettingsPage() {
     }
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
     setSaveMessage(null);
-    
-    setTimeout(() => {
-      setIsSaving(false);
+
+    try {
+      setErrorMsg(null);
+      const res = await api.put(`${process.env.NEXT_PUBLIC_API_URL}/srs/admin/system-settings`, settings);
+      setSettings({ ...initialSettings, ...(res.data?.settings || settings) });
       setSaveMessage("บันทึกการตั้งค่าระบบเรียบร้อยแล้ว (การตั้งค่าฮาร์ดแวร์จะมีผลกับคิวงานถัดไป)");
-    }, 800);
+    } catch (error: unknown) {
+      if (isAxiosError(error) && error.response) {
+        setErrorMsg(error.response.data?.error || "บันทึกการตั้งค่าไม่สำเร็จ");
+      } else {
+        setErrorMsg("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้");
+      }
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -52,6 +86,17 @@ export default function SystemSettingsPage() {
         </div>
 
         <form onSubmit={handleSave} className="space-y-6">
+          {loading && (
+            <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600">
+              กำลังโหลดการตั้งค่าระบบ...
+            </div>
+          )}
+
+          {errorMsg && (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              {errorMsg}
+            </div>
+          )}
           
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
