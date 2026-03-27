@@ -92,7 +92,7 @@ export default function AdminUsersPage() {
               </tr>
             </thead>
             <tbody>
-              {mockUsers.map((user) => (
+              {users.map((user) => (
                 <tr key={user.id} className="border-t border-gray-100">
                   <td className="px-6 py-4 text-gray-800">{user.name}</td>
                   <td className="px-6 py-4 text-gray-600">{user.email}</td>
