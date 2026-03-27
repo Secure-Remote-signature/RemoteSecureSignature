@@ -1,8 +1,14 @@
 import sqlite3 from "sqlite3";
 import { open } from "sqlite";
+import bcrypt from "bcryptjs";
 
 // Enable verbose mode for better error messages
 const sqlite3Verbose = sqlite3.verbose();
+const BCRYPT_ROUNDS = Number(process.env.BCRYPT_ROUNDS || 10);
+
+function isBcryptHash(value) {
+  return /^\$2[aby]\$\d{2}\$/.test(String(value || ""));
+}
 
 async function initializeDatabase() {
   try {
@@ -60,6 +66,30 @@ async function initializeDatabase() {
     }
 
     await db.run("UPDATE users SET userStatus = 'inactive' WHERE userStatus IS NULL OR userStatus = ''");
+
+    // One-time migration for old plaintext credentials.
+    const usersForCredentialMigration = await db.all(
+      "SELECT userId, userPassword, userPin FROM users"
+    );
+    for (const row of usersForCredentialMigration) {
+      const updates = [];
+      const params = [];
+
+      if (row.userPassword && !isBcryptHash(row.userPassword)) {
+        updates.push("userPassword = ?");
+        params.push(await bcrypt.hash(String(row.userPassword), BCRYPT_ROUNDS));
+      }
+
+      if (row.userPin && !isBcryptHash(row.userPin)) {
+        updates.push("userPin = ?");
+        params.push(await bcrypt.hash(String(row.userPin), BCRYPT_ROUNDS));
+      }
+
+      if (updates.length > 0) {
+        params.push(row.userId);
+        await db.run(`UPDATE users SET ${updates.join(", ")} WHERE userId = ?`, params);
+      }
+    }
     await db.exec(`
        CREATE TABLE IF NOT EXISTS requestSign (
          requestId INTEGER PRIMARY KEY AUTOINCREMENT,
