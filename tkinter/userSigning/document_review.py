@@ -6,7 +6,7 @@ import json
 import requests
 from PIL import Image, ImageTk, ImageOps
 
-from app_config import API_BASE_URL, build_api_url
+from app_config import API_BASE_URL, build_api_url, build_auth_headers
 from userSigning.reject_reason import prompt_reject_reason
 
 
@@ -202,6 +202,7 @@ class DocumentReviewPage(tk.Frame):
                 build_api_url(f"/srs/request/update-status/{req_id}"),
                 json={"status": "Rejected", "rejectReason": reason},
                 timeout=5,
+                headers=build_auth_headers(self.controller),
             )
             if res.status_code == 200:
                 messagebox.showinfo("สำเร็จ", "ปฏิเสธคำร้องแล้ว")
