@@ -75,6 +75,7 @@ class LoginPage(tk.Frame):
                 last_name = data.get("lastName", "")
                 self.controller.current_user = f"{first_name} {last_name}"
                 self.controller.user_role = data.get("role")
+                self.controller.auth_token = data.get("token")
                 
                 # Clear inputs and move to Dashboard
                 self.username_entry.delete(0, tk.END)
