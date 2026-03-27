@@ -17,6 +17,7 @@ const mockLiveQueue = [
 export default function CNCManagementPage() {
   const [activeTab, setActiveTab] = useState(devices[0].id);
   const [queue, setQueue] = useState(mockLiveQueue);
+  const [actionFeedback, setActionFeedback] = useState<string | null>(null);
 
   const activeDevice = devices.find(d => d.id === activeTab);
   
@@ -24,21 +25,22 @@ export default function CNCManagementPage() {
 
   const handleEStop = () => {
     if (confirm(`🚨 ยืนยันการสั่งหยุดฉุกเฉิน (E-Stop) เครื่อง ${activeDevice?.name} ใช่หรือไม่?\n\nงานที่กำลังทำอยู่จะถูกยกเลิกทันที!`)) {
-      alert(`[ส่งคำสั่ง API]: ส่งสัญญาณ E-STOP ไปที่ ${activeDevice?.ip} สำเร็จ!`);
+      setActionFeedback(`[ส่งคำสั่ง API]: ส่งสัญญาณ E-STOP ไปที่ ${activeDevice?.ip} สำเร็จ`);
     }
   };
 
   const handleTestPen = () => {
-    alert(`[ส่งคำสั่ง API]: สั่งทดสอบการลงปากกา (Calibration) ที่เครื่อง ${activeDevice?.name}`);
+    setActionFeedback(`[ส่งคำสั่ง API]: สั่งทดสอบการลงปากกา (Calibration) ที่เครื่อง ${activeDevice?.name}`);
   };
 
   const handleGoHome = () => {
-    alert(`[ส่งคำสั่ง API]: สั่งหัวพิมพ์กลับจุดเริ่มต้น (Homing) ที่เครื่อง ${activeDevice?.name}`);
+    setActionFeedback(`[ส่งคำสั่ง API]: สั่งหัวพิมพ์กลับจุดเริ่มต้น (Homing) ที่เครื่อง ${activeDevice?.name}`);
   };
 
   const handleRemoveQueue = (jobId: string) => {
     if (confirm(`ยืนยันการลบคิวงาน ${jobId} ใช่หรือไม่?`)) {
       setQueue(queue.filter(q => q.id !== jobId));
+      setActionFeedback(`ลบคิวงาน ${jobId} เรียบร้อยแล้ว`);
     }
   };
 
@@ -47,6 +49,7 @@ export default function CNCManagementPage() {
     if (jobToMove) {
       const otherJobs = queue.filter(q => q.id !== jobId);
       setQueue([jobToMove, ...otherJobs]);
+      setActionFeedback(`ย้ายคิว ${jobId} เป็นลำดับแรกเรียบร้อยแล้ว`);
     }
   };
 
@@ -67,6 +70,21 @@ export default function CNCManagementPage() {
           <h1 className="text-2xl font-bold text-gray-800">จัดการเครื่องพิมพ์ (CNC Management)</h1>
           <p className="text-sm text-gray-500 mt-1">ควบคุมฮาร์ดแวร์, การทดสอบระบบ, และจัดการคิวงานแบบ Real-time</p>
         </div>
+
+        {actionFeedback && (
+          <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-medium text-indigo-700">
+            <div className="flex items-center justify-between gap-3">
+              <span>{actionFeedback}</span>
+              <button
+                type="button"
+                onClick={() => setActionFeedback(null)}
+                className="rounded-md px-2 py-1 text-xs font-bold text-indigo-600 hover:bg-indigo-100"
+              >
+                ปิด
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="flex overflow-x-auto pb-2 gap-2 snap-x">
           {devices.map((device) => (
@@ -218,7 +236,7 @@ export default function CNCManagementPage() {
                     </tbody>
                   </table>
                 ) : (
-                  <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-gray-400 space-y-3 p-8">
+                  <div className="flex flex-col items-center justify-center h-full min-h-75 text-gray-400 space-y-3 p-8">
                     <svg className="w-12 h-12 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path></svg>
                     <p className="text-sm font-medium">ไม่มีคิวงานค้างสำหรับเครื่องนี้</p>
                   </div>
