@@ -25,8 +25,8 @@ const createUser = async (req, res) => {
     const userDate = new Date().toISOString();
     const result = await db.run(
       `
-      INSERT INTO users (userName, userLastname, userDate, userEmail, userPassword, userRole, userPhone, userfacultyId, userPin)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO users (userName, userLastname, userDate, userEmail, userPassword, userRole, userPhone, userfacultyId, userPin, userStatus)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
       [
         userName,
@@ -37,7 +37,8 @@ const createUser = async (req, res) => {
         userRole,
         userPhone,
         userfacultyId,
-        userPin
+        userPin,
+        "inactive",
       ],
     );
 
@@ -67,9 +68,15 @@ const loginUser = async (req, res) => {
       `SELECT * FROM users WHERE userEmail = ? AND userPassword = ?`,
       [userEmail, userPassword],
     );
-    await db.close();
 
     if (user) {
+      const now = new Date().toISOString();
+      await db.run(
+        `UPDATE users SET userStatus = 'active', lastLoginAt = ?, lastActiveAt = ? WHERE userId = ?`,
+        [now, now, user.userId],
+      );
+      await db.close();
+
       res.status(200).json({
         message: "Login successful!",
         userId: user.userId,
@@ -79,6 +86,7 @@ const loginUser = async (req, res) => {
         token: "fake-jwt-token",
       });
     } else {
+      await db.close();
       res.status(401).json({ error: "Invalid email or password!" });
       }
     } catch (error) {
@@ -86,6 +94,39 @@ const loginUser = async (req, res) => {
       res.status(500).json({ error: "Internal server error" });
     }
   };
+
+const logoutUser = async (req, res) => {
+  try {
+    const requesterIdRaw = req.body?.userId ?? req.headers["x-user-id"];
+    const requesterId = Number(Array.isArray(requesterIdRaw) ? requesterIdRaw[0] : requesterIdRaw);
+
+    if (!Number.isInteger(requesterId) || requesterId <= 0) {
+      return res.status(400).json({ error: "Invalid user id" });
+    }
+
+    const db = await open({
+      filename: "./database/remote.db",
+      driver: sqlite3Verbose.Database,
+    });
+
+    const now = new Date().toISOString();
+    const result = await db.run(
+      `UPDATE users SET userStatus = 'inactive', lastActiveAt = ? WHERE userId = ?`,
+      [now, requesterId],
+    );
+
+    await db.close();
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    return res.status(200).json({ message: "Logout successful" });
+  } catch (error) {
+    console.error("Logout error:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+};
 
 const verifyUserPin = async (req, res) => {
   try {
@@ -391,14 +432,67 @@ const getFaculties = async (req, res) => {
 
 export const getAllStaff = async (req, res) => {
     try {
+    const { clientId } = req.query;
         const db = await open({ 
             filename: "./database/remote.db", 
             driver: sqlite3Verbose.Database 
         });
 
-        const staffs = await db.all(
-            "SELECT userId, userName, userLastname FROM users WHERE userRole IN ('admin', 'staff', 'professor')"
-        );
+    let staffs;
+    if (clientId) {
+      const numericClientId = Number(clientId);
+      if (!Number.isInteger(numericClientId) || numericClientId <= 0) {
+        await db.close();
+        return res.status(400).json({ error: "Invalid clientId" });
+      }
+
+      const requester = await db.get(
+        "SELECT userfacultyId FROM users WHERE userId = ?",
+        [numericClientId]
+      );
+
+      if (!requester) {
+        await db.close();
+        return res.status(404).json({ error: "Requester not found" });
+      }
+
+      staffs = await db.all(
+        `
+        SELECT
+          u.userId,
+          u.userName,
+          u.userLastname,
+          u.userEmail,
+          u.userPhone,
+          u.userRole,
+          f.facultyName
+        FROM users u
+        LEFT JOIN faculties f ON f.facultyId = u.userfacultyId
+        WHERE u.userRole IN ('admin', 'staff', 'professor')
+          AND u.userfacultyId = ?
+          AND u.userId != ?
+        ORDER BY u.userName ASC, u.userLastname ASC
+        `,
+        [requester.userfacultyId, numericClientId]
+      );
+    } else {
+      staffs = await db.all(
+        `
+        SELECT
+          u.userId,
+          u.userName,
+          u.userLastname,
+          u.userEmail,
+          u.userPhone,
+          u.userRole,
+          f.facultyName
+        FROM users u
+        LEFT JOIN faculties f ON f.facultyId = u.userfacultyId
+        WHERE u.userRole IN ('admin', 'staff', 'professor')
+        ORDER BY u.userName ASC, u.userLastname ASC
+        `
+      );
+    }
         
         await db.close();
         res.status(200).json(staffs);
@@ -412,6 +506,7 @@ export const getAllStaff = async (req, res) => {
 export default {
   createUser,
   loginUser,
+  logoutUser,
   verifyUserPin,
   deluser,
   updateUser,
