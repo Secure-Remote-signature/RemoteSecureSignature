@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import messagebox
 import requests
 import json
+import os
 from datetime import datetime
 import time
 from websocket import create_connection
@@ -135,6 +136,17 @@ class ExecutionPage(tk.Frame):
                         pass
 
         raise RuntimeError(f"ส่ง payload ไป CNC ผ่าน WebSocket ไม่สำเร็จ: {last_error}")
+
+    def _save_signature_task_file(self, request_id, task_payload):
+        base_dir = os.path.dirname(__file__)
+        output_dir = os.path.join(base_dir, "signature_tasks")
+        os.makedirs(output_dir, exist_ok=True)
+
+        output_path = os.path.join(output_dir, f"signatureTask_{request_id}.json")
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(task_payload, f, ensure_ascii=False, indent=2)
+
+        return output_path
 
     def _update_request_status(self, request_id, status):
         try:
@@ -271,7 +283,9 @@ class ExecutionPage(tk.Frame):
 
             try:
                 task_payload = self._build_signature_task_payload(request_id)
+                file_path = self._save_signature_task_file(request_id, task_payload)
                 self._send_payload_to_cnc_ws(task_payload)
+                print(f"Execution Page: บันทึกไฟล์งานแล้วที่ {file_path}")
                 print(f"Execution Page: ส่ง payload ไป CNC ผ่าน WebSocket แล้ว (requestId={request_id})")
             except Exception as e:
                 messagebox.showerror("Error", f"ส่ง payload ไป CNC ไม่สำเร็จ: {e}", parent=self.winfo_toplevel())
