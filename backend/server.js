@@ -3,12 +3,14 @@ import cors from "cors";
 import fs from "fs"; 
 import path from "path";
 import { fileURLToPath } from 'url'; 
+import http from "http";
 
 import initializeDatabase from "./config/init.js"; 
 import userService from "./router/user.js";
 import requestService from "./router/request.js";
 import machineService from "./router/machine.js";
 import adminService from "./router/admin.js";
+import { initializeRealtimeServer } from "./lib/realtime.js";
 
 // Setup __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -48,7 +50,11 @@ async function startApp() {
     try {
         console.log("Setting up database...");
         await initializeDatabase();
-        const server = app.listen(port, () => {
+
+        const server = http.createServer(app);
+        initializeRealtimeServer(server);
+
+        server.listen(port, () => {
             console.log(`Secure Remote Signature Backend running on port ${port}`);
         });
 
