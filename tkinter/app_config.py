@@ -64,3 +64,12 @@ def build_api_url(path: str) -> str:
 
     normalized_path = path if path.startswith("/") else f"/{path}"
     return f"{API_BASE_URL}{normalized_path}"
+
+
+def build_auth_headers(controller) -> dict:
+    token = getattr(controller, "auth_token", None)
+    if not token:
+        return {}
+    return {
+        "Authorization": f"Bearer {token}",
+    }
