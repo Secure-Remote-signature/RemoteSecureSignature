@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Home, History, Settings, LogOut, X, FilePen, Shield, Users } from 'lucide-react';
@@ -13,21 +13,16 @@ interface SidebarProps {
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const [role, setRole] = useState('');
-
-  useEffect(() => {
-    const session = sessionStorage.getItem('user_session');
-    if (!session) {
-      setRole('');
-      return;
-    }
-
+  const [role] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    const session = window.sessionStorage.getItem('user_session');
+    if (!session) return '';
     try {
-      setRole(String(JSON.parse(session)?.role ?? '').toLowerCase());
+      return String(JSON.parse(session)?.role ?? '').toLowerCase();
     } catch {
-      setRole('');
+      return '';
     }
-  }, []);
+  });
 
   const menuItems = useMemo(() => {
     const isAdmin = role.includes('admin');
