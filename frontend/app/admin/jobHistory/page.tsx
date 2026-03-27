@@ -1,8 +1,10 @@
 "use client";
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import api, { isAxiosError } from "@/app/lib/api";
 
 interface JobRecord {
-  id: string;
+  requestId: number;
+  requestNumber: string;
   timestamp: string;
   requester: string;
   signer: string;
@@ -14,29 +16,169 @@ interface JobRecord {
   coordinatesHash: string;
 }
 
-const mockJobs: JobRecord[] = [
-  { id: "JOB-1045", timestamp: "2026-03-27 11:05:22", requester: "สมหญิง ใจดี", signer: "สมชาย อาจหาญ", faculty: "Engineering", targetDevice: "PLT-ENG", status: "PROCESSING", duration: "00:45", coordinatesHash: "a8f5f167f44f..." },
-  { id: "JOB-1044", timestamp: "2026-03-27 10:50:10", requester: "สายสมร แสนสุข", signer: "Test Dev", faculty: "Science", targetDevice: "PLT-SCI", status: "COMPLETED", duration: "02:15", coordinatesHash: "b9x2c109d31a..." },
-    { id: "JOB-1043", timestamp: "2026-03-27 10:45:00", requester: "นิรันดร์ ก่อนกาล", signer: "ยงยุทธ ยิ่งยวด", faculty: "Engineering", targetDevice: "PLT-ENG", status: "COMPLETED", duration: "01:50", coordinatesHash: "c7y4a982e11b..." },
-  { id: "JOB-1042", timestamp: "2026-03-27 10:30:05", requester: "จิราภรณ์ สุขใจ", signer: "ยอดเยี่ยม ยิ่งใหญ่", faculty: "Business", targetDevice: "PLT-BUS", status: "FAILED", duration: "00:12", errorMessage: "Pen connection lost / Hardware timeout", coordinatesHash: "d5z1b883f00c..." },
-  { id: "JOB-1041", timestamp: "2026-03-27 10:15:30", requester: "สุรชัย สอนดี", signer: "เกรียงไกร ตลอดกาล", faculty: "Science", targetDevice: "PLT-SCI", status: "CANCELLED", duration: "-", errorMessage: "Cancelled by Requester", coordinatesHash: "e3w9d774g22d..." },
-];
+interface AdminJobHistoryApi {
+  requestId: number;
+  requestNumber: string;
+  requestDate: string;
+  requestStatus: string;
+  requestRTSP?: string | null;
+  rejectReason?: string | null;
+  signatureCoordinates?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  completedAt?: string | null;
+  cncCompletedAt?: string | null;
+  cncLastError?: string | null;
+  clientName?: string | null;
+  clientLastName?: string | null;
+  ownerName?: string | null;
+  ownerLastName?: string | null;
+  facultyName?: string | null;
+}
+
+function mapRequestStatusToUiStatus(status?: string): JobRecord["status"] {
+  const normalized = String(status || "").toLowerCase();
+  if (normalized === "signed") return "COMPLETED";
+  if (normalized === "rejected") return "FAILED";
+  if (normalized === "pending") return "WAITING";
+  return "PROCESSING";
+}
+
+function formatDate(value?: string | null): string {
+  if (!value) return "-";
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return value;
+  const dd = String(dt.getDate()).padStart(2, "0");
+  const mm = String(dt.getMonth() + 1).padStart(2, "0");
+  const yyyy = dt.getFullYear();
+  const hh = String(dt.getHours()).padStart(2, "0");
+  const mi = String(dt.getMinutes()).padStart(2, "0");
+  return `${dd}/${mm}/${yyyy} ${hh}:${mi}`;
+}
+
+function formatDuration(start?: string | null, end?: string | null): string {
+  if (!start || !end) return "-";
+  const s = new Date(start).getTime();
+  const e = new Date(end).getTime();
+  if (!Number.isFinite(s) || !Number.isFinite(e) || e < s) return "-";
+  const totalSec = Math.floor((e - s) / 1000);
+  const mm = String(Math.floor(totalSec / 60)).padStart(2, "0");
+  const ss = String(totalSec % 60).padStart(2, "0");
+  return `${mm}:${ss}`;
+}
 
 export default function JobHistoryPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
+  const [jobs, setJobs] = useState<JobRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState("");
   const [selectedJob, setSelectedJob] = useState<JobRecord | null>(null);
 
-  const filteredJobs = mockJobs.filter(job => {
+  useEffect(() => {
+    const fetchJobHistory = async () => {
+      try {
+        setLoading(true);
+        setErrorMsg("");
+        const res = await api.get(`${process.env.NEXT_PUBLIC_API_URL}/srs/admin/job-history?limit=300`);
+        const rows = (res.data?.jobs || []) as AdminJobHistoryApi[];
+
+        const mapped: JobRecord[] = rows.map((row) => {
+          const requester = `${row.clientName || ""} ${row.clientLastName || ""}`.trim() || "-";
+          const signer = `${row.ownerName || ""} ${row.ownerLastName || ""}`.trim() || "-";
+          const status = mapRequestStatusToUiStatus(row.requestStatus);
+          const duration = status === "COMPLETED"
+            ? formatDuration(row.createdAt || row.requestDate, row.completedAt || row.cncCompletedAt)
+            : "-";
+
+          return {
+            requestId: row.requestId,
+            requestNumber: row.requestNumber || `REQ-${row.requestId}`,
+            timestamp: formatDate(row.requestDate),
+            requester,
+            signer,
+            faculty: row.facultyName || "-",
+            targetDevice: row.requestRTSP || "none",
+            status,
+            duration,
+            errorMessage: row.cncLastError || row.rejectReason || undefined,
+            coordinatesHash: row.signatureCoordinates
+              ? `${String(row.signatureCoordinates).slice(0, 24)}...`
+              : "-",
+          };
+        });
+
+        setJobs(mapped);
+      } catch (error: unknown) {
+        if (isAxiosError(error) && error.response) {
+          setErrorMsg(error.response.data?.error || "โหลดประวัติงานไม่สำเร็จ");
+        } else {
+          setErrorMsg("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้");
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void fetchJobHistory();
+  }, []);
+
+  const filteredJobs = useMemo(() => jobs.filter((job) => {
     const searchLower = searchTerm.toLowerCase();
     const matchesSearch = 
-      job.id.toLowerCase().includes(searchLower) || 
+      job.requestNumber.toLowerCase().includes(searchLower) || 
       job.requester.toLowerCase().includes(searchLower) ||
       job.signer.toLowerCase().includes(searchLower);
     
     const matchesStatus = statusFilter === "ALL" || job.status === statusFilter;
     return matchesSearch && matchesStatus;
-  });
+  }), [jobs, searchTerm, statusFilter]);
+
+  const handleExportCsv = () => {
+    const headers = [
+      "requestId",
+      "requestNumber",
+      "timestamp",
+      "requester",
+      "signer",
+      "faculty",
+      "targetDevice",
+      "status",
+      "duration",
+      "errorMessage",
+      "coordinatesHash",
+    ];
+
+    const escapeCell = (value: string) => `"${value.replace(/"/g, '""')}"`;
+    const rows = filteredJobs.map((job) => [
+      String(job.requestId),
+      job.requestNumber,
+      job.timestamp,
+      job.requester,
+      job.signer,
+      job.faculty,
+      job.targetDevice,
+      job.status,
+      job.duration,
+      job.errorMessage || "",
+      job.coordinatesHash,
+    ]);
+
+    const csvText = [
+      headers.join(","),
+      ...rows.map((row) => row.map((cell) => escapeCell(String(cell))).join(",")),
+    ].join("\n");
+
+    const blob = new Blob([csvText], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `job-history-${Date.now()}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   const getStatusStyle = (status: string) => {
     switch (status) {
@@ -64,7 +206,7 @@ export default function JobHistoryPage() {
             <select 
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm bg-white min-w-37.5"
+              className="px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm text-Slate-gray bg-white min-w-37.5"
             >
               <option value="ALL">ทุกสถานะ (All)</option>
               <option value="COMPLETED">สำเร็จ (Completed)</option>
@@ -80,12 +222,15 @@ export default function JobHistoryPage() {
                 placeholder="ค้นหา Job ID, ผู้ส่งคำร้อง, หรือผู้ลงนาม..." 
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm bg-white"
+                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm text-Slate-gray bg-white"
               />
               <svg className="w-5 h-5 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
             </div>
             
-            <button className="px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 font-medium transition-colors shadow-sm text-sm whitespace-nowrap">
+            <button
+              className="px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 font-medium transition-colors shadow-sm text-sm whitespace-nowrap"
+              onClick={handleExportCsv}
+            >
               Export CSV
             </button>
           </div>
@@ -106,10 +251,22 @@ export default function JobHistoryPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {filteredJobs.map((job) => (
-                  <tr key={job.id} className="hover:bg-gray-50/50 transition-colors">
+                {loading ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-12 text-center text-gray-500 text-sm">
+                      กำลังโหลดประวัติงาน...
+                    </td>
+                  </tr>
+                ) : errorMsg ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-12 text-center text-rose-600 text-sm">
+                      {errorMsg}
+                    </td>
+                  </tr>
+                ) : filteredJobs.map((job) => (
+                  <tr key={job.requestId} className="hover:bg-gray-50/50 transition-colors">
                     <td className="px-6 py-4">
-                      <div className="text-sm font-bold text-gray-700">{job.id}</div>
+                      <div className="text-sm font-bold text-gray-700">{job.requestNumber}</div>
                       <div className="text-xs text-gray-400 mt-0.5">{job.timestamp}</div>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600 font-medium">{job.requester}</td>
@@ -133,7 +290,7 @@ export default function JobHistoryPage() {
                     </td>
                   </tr>
                 ))}
-                {filteredJobs.length === 0 && (
+                {!loading && !errorMsg && filteredJobs.length === 0 && (
                   <tr>
                     <td colSpan={6} className="px-6 py-12 text-center text-gray-500 text-sm">
                       ไม่พบประวัติงานที่ตรงกับเงื่อนไข
@@ -158,7 +315,7 @@ export default function JobHistoryPage() {
               <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
                 <div>
                   <h3 className="text-lg font-bold text-gray-800">ข้อมูลงานเซ็น</h3>
-                  <p className="text-xs text-gray-500 font-mono mt-0.5">{selectedJob.id}</p>
+                  <p className="text-xs text-gray-500 font-mono mt-0.5">{selectedJob.requestNumber}</p>
                 </div>
                 <button onClick={() => setSelectedJob(null)} className="text-gray-400 hover:text-gray-600 text-xl font-bold leading-none">&times;</button>
               </div>
