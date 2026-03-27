@@ -2,6 +2,7 @@ import { open } from "sqlite";
 import sqlite3 from "sqlite3";
 import nodemailer from "nodemailer";
 import 'dotenv/config';
+import { getClientIp, writeActivityLog } from "../lib/activityLog.js";
 
 const sqlite3Verbose = sqlite3.verbose();
 
@@ -75,6 +76,19 @@ const loginUser = async (req, res) => {
         `UPDATE users SET userStatus = 'active', lastLoginAt = ?, lastActiveAt = ? WHERE userId = ?`,
         [now, now, user.userId],
       );
+
+      await writeActivityLog(db, {
+        eventAt: now,
+        actorUserId: user.userId,
+        actorEmail: user.userEmail,
+        action: "LOGIN",
+        targetType: "AUTH",
+        targetId: String(user.userId),
+        ipAddress: getClientIp(req),
+        status: "SUCCESS",
+        details: "User logged in via Web",
+      });
+
       await db.close();
 
       res.status(200).json({
@@ -86,6 +100,17 @@ const loginUser = async (req, res) => {
         token: "fake-jwt-token",
       });
     } else {
+      await writeActivityLog(db, {
+        eventAt: new Date().toISOString(),
+        actorUserId: null,
+        actorEmail: String(userEmail || "").trim() || null,
+        action: "LOGIN",
+        targetType: "AUTH",
+        targetId: "-",
+        ipAddress: getClientIp(req),
+        status: "FAILED",
+        details: "Invalid email or password",
+      });
       await db.close();
       res.status(401).json({ error: "Invalid email or password!" });
       }
@@ -109,11 +134,29 @@ const logoutUser = async (req, res) => {
       driver: sqlite3Verbose.Database,
     });
 
+    const beforeUser = await db.get(
+      "SELECT userName, userLastname, userPhone, userPassword, userEmail FROM users WHERE userId = ?",
+      [userId],
+    );
+
     const now = new Date().toISOString();
     const result = await db.run(
       `UPDATE users SET userStatus = 'inactive', lastActiveAt = ? WHERE userId = ?`,
       [now, requesterId],
     );
+
+    const actor = await db.get("SELECT userEmail FROM users WHERE userId = ?", [requesterId]);
+    await writeActivityLog(db, {
+      eventAt: now,
+      actorUserId: requesterId,
+      actorEmail: actor?.userEmail || null,
+      action: "LOGOUT",
+      targetType: "AUTH",
+      targetId: String(requesterId),
+      ipAddress: getClientIp(req),
+      status: result.changes > 0 ? "SUCCESS" : "FAILED",
+      details: result.changes > 0 ? "User logged out" : "Logout failed: user not found",
+    });
 
     await db.close();
 
@@ -272,6 +315,40 @@ const updateUser = async (req, res) => {
       ],
     );
 
+    const updatedUser = await db.get(
+      "SELECT userEmail FROM users WHERE userId = ?",
+      [userId],
+    );
+
+    const changedFields = [];
+    if (beforeUser) {
+      const nextName = userName ?? beforeUser.userName;
+      const nextLastname = userLastname ?? beforeUser.userLastname;
+      const nextPhone = userPhone ?? beforeUser.userPhone;
+      const nextPassword = userPassword ?? beforeUser.userPassword;
+
+      if (String(beforeUser.userName ?? "") !== String(nextName ?? "")) changedFields.push("userName");
+      if (String(beforeUser.userLastname ?? "") !== String(nextLastname ?? "")) changedFields.push("userLastname");
+      if (String(beforeUser.userPhone ?? "") !== String(nextPhone ?? "")) changedFields.push("userPhone");
+      if (String(beforeUser.userPassword ?? "") !== String(nextPassword ?? "")) changedFields.push("userPassword");
+    }
+
+    await writeActivityLog(db, {
+      actorUserId: Number(userId) || null,
+      actorEmail: updatedUser?.userEmail || null,
+      action: "ACCOUNT_UPDATE",
+      targetType: "USER",
+      targetId: String(userId),
+      ipAddress: getClientIp(req),
+      status: result.changes > 0 ? "SUCCESS" : "FAILED",
+      details: result.changes > 0
+        ? `Updated user profile${changedFields.length > 0 ? ` (${changedFields.join(", ")})` : ""}`
+        : "Update user profile failed",
+      metadata: {
+        changedFields,
+      },
+    });
+
     await db.close();
 
     if (result.changes === 0) {
@@ -353,6 +430,19 @@ const changePassword = async (req, res) => {
       "UPDATE users SET userPassword = ? WHERE userId = ?", 
       [newPassword, id]
       );
+
+    const actor = await db.get("SELECT userEmail FROM users WHERE userId = ?", [id]);
+    await writeActivityLog(db, {
+      actorUserId: Number(id) || null,
+      actorEmail: actor?.userEmail || null,
+      action: "ACCOUNT_PASSWORD_CHANGE",
+      targetType: "USER",
+      targetId: String(id),
+      ipAddress: getClientIp(req),
+      status: "SUCCESS",
+      details: "User changed password",
+    });
+
     await db.close();
 
     res.status(200).json({ message: "เปลี่ยนรหัสผ่านสำเร็จ" });
