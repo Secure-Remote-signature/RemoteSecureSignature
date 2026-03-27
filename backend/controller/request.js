@@ -3,6 +3,7 @@ import sqlite3 from 'sqlite3';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { getClientIp, writeActivityLog } from '../lib/activityLog.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -216,6 +217,29 @@ const submitRequest = async (req, res) => {
         `;
 
         const result = await db.run(lifecycleSql, params);
+
+        const requesterProfile = await db.get(
+            "SELECT userEmail FROM users WHERE userId = ?",
+            [clientIdNumber]
+        );
+
+        await writeActivityLog(db, {
+            actorUserId: clientIdNumber,
+            actorEmail: requesterProfile?.userEmail || null,
+            action: "SIGN_REQUEST",
+            targetType: "REQUEST",
+            targetId: String(result.lastID),
+            targetDevice: rtsp || camera || "none",
+            ipAddress: getClientIp(req),
+            status: "SUCCESS",
+            details: `Created signature request ${normalizedDocId}`,
+            metadata: {
+                requestNumber: normalizedDocId,
+                ownerId: ownerIdNumber,
+                subject: normalizedSubject,
+            },
+        });
+
         await db.close();
 
         return res.status(200).json({
@@ -252,6 +276,38 @@ const updateStatus = async (req, res) => {
         const db = await open({ filename: "./database/remote.db", driver: sqlite3.Database });
 
         const transition = await transitionStatus(db, id, status, expectedStatus || null, actorId || null, rejectReason || null);
+
+        if (transition.ok && (String(status || '').toLowerCase() === 'signed' || String(status || '').toLowerCase() === 'rejected')) {
+            const requestRow = await db.get(
+                "SELECT requestNumber, requestRTSP, ownerRequestID FROM requestSign WHERE requestId = ?",
+                [id]
+            );
+            const actorUserId = Number(actorId) || Number(requestRow?.ownerRequestID) || null;
+            let actorEmail = null;
+            if (actorUserId) {
+                const actor = await db.get("SELECT userEmail FROM users WHERE userId = ?", [actorUserId]);
+                actorEmail = actor?.userEmail || null;
+            }
+
+            await writeActivityLog(db, {
+                actorUserId,
+                actorEmail,
+                action: "SIGN_REQUEST",
+                targetType: "REQUEST",
+                targetId: String(id),
+                targetDevice: requestRow?.requestRTSP || "none",
+                ipAddress: getClientIp(req),
+                status: String(status || '').toLowerCase() === 'signed' ? 'SUCCESS' : 'FAILED',
+                details: String(status || '').toLowerCase() === 'signed'
+                    ? `Signed request ${requestRow?.requestNumber || id}`
+                    : `Rejected request ${requestRow?.requestNumber || id}${rejectReason ? `: ${rejectReason}` : ''}`,
+                metadata: {
+                    transitionTo: status,
+                    expectedStatus: expectedStatus || null,
+                },
+            });
+        }
+
         await db.close();
 
         if (transition.ok) {
@@ -284,6 +340,33 @@ const confirmSignature = async (req, res) => {
         }
 
         const transition = await transitionStatus(db, requestId, REQUEST_STATUS.SIGNED);
+        if (transition.ok) {
+            const requestRow = await db.get(
+                "SELECT requestNumber, requestRTSP, ownerRequestID FROM requestSign WHERE requestId = ?",
+                [requestId]
+            );
+            const actorUserId = Number(requestRow?.ownerRequestID) || null;
+            let actorEmail = null;
+            if (actorUserId) {
+                const actor = await db.get("SELECT userEmail FROM users WHERE userId = ?", [actorUserId]);
+                actorEmail = actor?.userEmail || null;
+            }
+
+            await writeActivityLog(db, {
+                actorUserId,
+                actorEmail,
+                action: "SIGN_REQUEST",
+                targetType: "REQUEST",
+                targetId: String(requestId),
+                targetDevice: requestRow?.requestRTSP || "none",
+                ipAddress: getClientIp(req),
+                status: "SUCCESS",
+                details: `Signed request ${requestRow?.requestNumber || requestId}`,
+                metadata: {
+                    source: "confirmSignature",
+                },
+            });
+        }
         await db.close();
 
         if (!transition.ok) {
