@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import api, { isAxiosError } from "@/app/lib/api";
+import { subscribeRealtime } from "@/app/lib/realtime";
 
 interface AuditLog {
   id: string;
@@ -48,49 +49,59 @@ export default function AuditLogsPage() {
   const [errorMsg, setErrorMsg] = useState("");
   const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
 
-  useEffect(() => {
-    const fetchAuditLogs = async () => {
-      try {
-        setLoading(true);
-        setErrorMsg("");
+  const fetchAuditLogs = useCallback(async (showLoading = true) => {
+    try {
+      if (showLoading) setLoading(true);
+      setErrorMsg("");
 
-        const res = await api.get(`${process.env.NEXT_PUBLIC_API_URL}/srs/admin/audit-logs?limit=300`);
-        const rows = (res.data?.logs || []) as Array<{
-          id?: string;
-          timestamp?: string;
-          user?: string;
-          action?: string;
-          targetDevice?: string;
-          ipAddress?: string;
-          status?: string;
-          details?: string;
-        }>;
+      const res = await api.get(`${process.env.NEXT_PUBLIC_API_URL}/srs/admin/audit-logs?limit=300`);
+      const rows = (res.data?.logs || []) as Array<{
+        id?: string;
+        timestamp?: string;
+        user?: string;
+        action?: string;
+        targetDevice?: string;
+        ipAddress?: string;
+        status?: string;
+        details?: string;
+      }>;
 
-        const mapped: AuditLog[] = rows.map((row, index) => ({
-          id: row.id || `LOG-${index + 1}`,
-          timestamp: formatDate(row.timestamp),
-          user: row.user || "-",
-          action: normalizeAction(row.action),
-          targetDevice: row.targetDevice || "-",
-          ipAddress: row.ipAddress || "-",
-          status: normalizeStatus(row.status),
-          details: row.details || "-",
-        }));
+      const mapped: AuditLog[] = rows.map((row, index) => ({
+        id: row.id || `LOG-${index + 1}`,
+        timestamp: formatDate(row.timestamp),
+        user: row.user || "-",
+        action: normalizeAction(row.action),
+        targetDevice: row.targetDevice || "-",
+        ipAddress: row.ipAddress || "-",
+        status: normalizeStatus(row.status),
+        details: row.details || "-",
+      }));
 
-        setLogs(mapped);
-      } catch (error: unknown) {
-        if (isAxiosError(error) && error.response) {
-          setErrorMsg(error.response.data?.error || "โหลด Audit Logs ไม่สำเร็จ");
-        } else {
-          setErrorMsg("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้");
-        }
-      } finally {
-        setLoading(false);
+      setLogs(mapped);
+    } catch (error: unknown) {
+      if (isAxiosError(error) && error.response) {
+        setErrorMsg(error.response.data?.error || "โหลด Audit Logs ไม่สำเร็จ");
+      } else {
+        setErrorMsg("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้");
       }
-    };
-
-    fetchAuditLogs();
+    } finally {
+      if (showLoading) setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void fetchAuditLogs(true);
+  }, [fetchAuditLogs]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeRealtime((event) => {
+      if (event.type === "audit-log.created") {
+        void fetchAuditLogs(false);
+      }
+    });
+
+    return unsubscribe;
+  }, [fetchAuditLogs]);
 
   const filteredLogs = useMemo(() => {
     const keyword = searchTerm.trim().toLowerCase();
