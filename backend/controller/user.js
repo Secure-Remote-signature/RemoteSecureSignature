@@ -2,11 +2,49 @@ import { open } from "sqlite";
 import sqlite3 from "sqlite3";
 import nodemailer from "nodemailer";
 import 'dotenv/config';
+import jwt from "jsonwebtoken";
 import { getClientIp, writeActivityLog } from "../lib/activityLog.js";
 
 const sqlite3Verbose = sqlite3.verbose();
+const JWT_SECRET = String(process.env.JWT_SECRET || "dev-secret-change-me");
+const JWT_EXPIRES_IN = String(process.env.JWT_EXPIRES_IN || "8h");
 
 let otpStore = {}; 
+
+function getAuthUser(req) {
+  const userId = Number(req.user?.id || 0);
+  const role = String(req.user?.role || "").toLowerCase();
+  return {
+    userId: Number.isInteger(userId) && userId > 0 ? userId : null,
+    role,
+    isAdmin: role.includes("admin"),
+  };
+}
+
+async function enforceSelfOrAdmin(db, req, targetUserId) {
+  const auth = getAuthUser(req);
+  if (!auth.userId) {
+    return { allowed: false, code: 401, error: "Unauthorized" };
+  }
+
+  if (auth.isAdmin || auth.userId === targetUserId) {
+    return { allowed: true, authUserId: auth.userId };
+  }
+
+  const actor = await db.get("SELECT userEmail FROM users WHERE userId = ?", [auth.userId]);
+  await writeActivityLog(db, {
+    actorUserId: auth.userId,
+    actorEmail: actor?.userEmail || null,
+    action: "FORBIDDEN",
+    targetType: "USER",
+    targetId: String(targetUserId),
+    ipAddress: getClientIp(req),
+    status: "FAILED",
+    details: `Unauthorized user access attempt to user ${targetUserId}`,
+  });
+
+  return { allowed: false, code: 403, error: "Forbidden" };
+}
 
 const createUser = async (req, res) => {
   try {
@@ -91,13 +129,23 @@ const loginUser = async (req, res) => {
 
       await db.close();
 
+      const token = jwt.sign(
+        {
+          sub: user.userId,
+          role: user.userRole,
+          email: user.userEmail,
+        },
+        JWT_SECRET,
+        { expiresIn: JWT_EXPIRES_IN },
+      );
+
       res.status(200).json({
         message: "Login successful!",
         userId: user.userId,
         name: user.userName,
         lastName: user.userLastname,
         role: user.userRole,
-        token: "fake-jwt-token",
+        token,
       });
     } else {
       await writeActivityLog(db, {
@@ -122,8 +170,7 @@ const loginUser = async (req, res) => {
 
 const logoutUser = async (req, res) => {
   try {
-    const requesterIdRaw = req.body?.userId ?? req.headers["x-user-id"];
-    const requesterId = Number(Array.isArray(requesterIdRaw) ? requesterIdRaw[0] : requesterIdRaw);
+    const requesterId = Number(req.user?.id || 0);
 
     if (!Number.isInteger(requesterId) || requesterId <= 0) {
       return res.status(400).json({ error: "Invalid user id" });
@@ -133,11 +180,6 @@ const logoutUser = async (req, res) => {
       filename: "./database/remote.db",
       driver: sqlite3Verbose.Database,
     });
-
-    const beforeUser = await db.get(
-      "SELECT userName, userLastname, userPhone, userPassword, userEmail FROM users WHERE userId = ?",
-      [userId],
-    );
 
     const now = new Date().toISOString();
     const result = await db.run(
@@ -173,8 +215,7 @@ const logoutUser = async (req, res) => {
 
 const heartbeatUser = async (req, res) => {
   try {
-    const requesterIdRaw = req.body?.userId ?? req.headers["x-user-id"];
-    const requesterId = Number(Array.isArray(requesterIdRaw) ? requesterIdRaw[0] : requesterIdRaw);
+    const requesterId = Number(req.user?.id || 0);
 
     if (!Number.isInteger(requesterId) || requesterId <= 0) {
       return res.status(400).json({ error: "Invalid user id" });
@@ -241,20 +282,21 @@ const verifyUserPin = async (req, res) => {
 
 const deluser = async (req, res) => {
   try {
-    // 1. Get the user ID from the request URL parameters (e.g., /deleteuser/1)
-    const userId = req.params.id;
-    console.log(userId);
-    // 2. Validate that an ID was provided
-    if (!userId) {
-      return res
-        .status(400)
-        .json({ error: "User ID is required to delete a user!" });
+    const userId = Number(req.params.id);
+    if (!Number.isInteger(userId) || userId <= 0) {
+      return res.status(400).json({ error: "User ID is required to delete a user!" });
     }
 
     const db = await open({
       filename: "./database/remote.db", // Matching the filename you provided
       driver: sqlite3Verbose.Database,
     });
+
+    const permission = await enforceSelfOrAdmin(db, req, userId);
+    if (!permission.allowed) {
+      await db.close();
+      return res.status(permission.code).json({ error: permission.error });
+    }
 
     const result = await db.run(`DELETE FROM users WHERE userId = ?`, [userId]);
 
@@ -271,7 +313,7 @@ const deluser = async (req, res) => {
     // 7. Send the success response
     res.status(200).json({
       message: "User deleted successfully!",
-      deletedUserId: userId,
+      deletedUserId: Number(userId),
     });
   } catch (error) {
     console.error("Error deleting user:", error);
@@ -281,7 +323,7 @@ const deluser = async (req, res) => {
 
 const updateUser = async (req, res) => {
   try {
-    const userId = req.params.id;
+    const userId = Number(req.params.id);
     const {
       userName,
       userLastname,
@@ -289,13 +331,24 @@ const updateUser = async (req, res) => {
       userPassword,
     } = req.body;
 
-    if (!userId) {
+    if (!Number.isInteger(userId) || userId <= 0) {
       return res.status(400).json({ error: "User ID is required to update!" });
     }
     const db = await open({
       filename: "./database/remote.db",
       driver: sqlite3Verbose.Database,
     });
+
+    const permission = await enforceSelfOrAdmin(db, req, userId);
+    if (!permission.allowed) {
+      await db.close();
+      return res.status(permission.code).json({ error: permission.error });
+    }
+
+    const beforeUser = await db.get(
+      "SELECT userName, userLastname, userPhone, userPassword, userEmail FROM users WHERE userId = ?",
+      [userId],
+    );
 
     const result = await db.run(
         `
@@ -369,10 +422,20 @@ const updateUser = async (req, res) => {
 
 const getUserProfile = async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: "Invalid user id" });
+    }
+
     const db = await open({ 
       filename: "./database/remote.db", 
       driver: sqlite3Verbose.Database });
+
+    const permission = await enforceSelfOrAdmin(db, req, id);
+    if (!permission.allowed) {
+      await db.close();
+      return res.status(permission.code).json({ error: permission.error });
+    }
 
     const user = await db.get(
       `
@@ -399,8 +462,12 @@ const getUserProfile = async (req, res) => {
 
 const changePassword = async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = Number(req.params.id);
     const { oldPassword, newPassword } = req.body;
+
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: "Invalid user id" });
+    }
 
     console.log("Update Request for ID:", id);
     console.log("Body Received:", req.body); 
@@ -410,6 +477,12 @@ const changePassword = async (req, res) => {
     }
 
     const db = await open({ filename: "./database/remote.db", driver: sqlite3Verbose.Database });
+
+    const permission = await enforceSelfOrAdmin(db, req, id);
+    if (!permission.allowed) {
+      await db.close();
+      return res.status(permission.code).json({ error: permission.error });
+    }
 
     // 1. check old password
     const user = await db.get("SELECT userPassword FROM users WHERE userId = ?", [id]);
