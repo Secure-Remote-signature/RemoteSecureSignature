@@ -23,7 +23,7 @@ const port = 5000;
 app.use(cors({
     origin: "*",
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "x-user-role", "x-user-id"]
+    allowedHeaders: ["Content-Type", "Authorization"]
 }));
 app.use(express.json({ limit: '50mb' })); 
 app.use(express.urlencoded({ limit: '50mb', extended: true })); 
