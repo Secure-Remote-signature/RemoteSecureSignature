@@ -8,8 +8,92 @@ import { getClientIp, writeActivityLog } from "../lib/activityLog.js";
 const sqlite3Verbose = sqlite3.verbose();
 const JWT_SECRET = String(process.env.JWT_SECRET || "dev-secret-change-me");
 const JWT_EXPIRES_IN = String(process.env.JWT_EXPIRES_IN || "8h");
+const PIN_REGEX = /^\d{6}$/;
+const OTP_TTL_MS = 5 * 60 * 1000;
+const OTP_COOLDOWN_MS = 60 * 1000;
+const OTP_MAX_ATTEMPTS = 5;
+const OTP_LOCK_MS = 10 * 60 * 1000;
 
 let otpStore = {}; 
+
+function otpSeconds(ms) {
+  return Math.max(1, Math.ceil(ms / 1000));
+}
+
+function ensureOtpCanSend(email) {
+  const record = otpStore[email];
+  const now = Date.now();
+  if (!record) {
+    return { ok: true };
+  }
+
+  if (record.lockedUntil && now < record.lockedUntil) {
+    return {
+      ok: false,
+      code: 429,
+      error: "OTP temporarily locked due to too many invalid attempts",
+      retryAfterSec: otpSeconds(record.lockedUntil - now),
+    };
+  }
+
+  if (record.lastSentAt && now < (record.lastSentAt + OTP_COOLDOWN_MS)) {
+    return {
+      ok: false,
+      code: 429,
+      error: "Please wait before requesting OTP again",
+      retryAfterSec: otpSeconds((record.lastSentAt + OTP_COOLDOWN_MS) - now),
+    };
+  }
+
+  return { ok: true };
+}
+
+function verifyOtpForEmail(email, otp) {
+  const record = otpStore[email];
+  const now = Date.now();
+
+  if (!record) {
+    return { ok: false, code: 400, error: "Invalid OTP or OTP expired." };
+  }
+
+  if (record.lockedUntil && now < record.lockedUntil) {
+    return {
+      ok: false,
+      code: 429,
+      error: "OTP verification temporarily locked",
+      retryAfterSec: otpSeconds(record.lockedUntil - now),
+    };
+  }
+
+  if (now > record.expires) {
+    delete otpStore[email];
+    return { ok: false, code: 400, error: "OTP expired." };
+  }
+
+  if (String(record.otp) !== String(otp)) {
+    const nextFailedAttempts = Number(record.failedAttempts || 0) + 1;
+    record.failedAttempts = nextFailedAttempts;
+
+    if (nextFailedAttempts >= OTP_MAX_ATTEMPTS) {
+      record.lockedUntil = now + OTP_LOCK_MS;
+      return {
+        ok: false,
+        code: 429,
+        error: "Too many invalid OTP attempts",
+        retryAfterSec: otpSeconds(OTP_LOCK_MS),
+      };
+    }
+
+    return {
+      ok: false,
+      code: 400,
+      error: `Invalid OTP. Remaining attempts: ${OTP_MAX_ATTEMPTS - nextFailedAttempts}`,
+      remainingAttempts: OTP_MAX_ATTEMPTS - nextFailedAttempts,
+    };
+  }
+
+  return { ok: true };
+}
 
 function getAuthUser(req) {
   const userId = Number(req.user?.id || 0);
@@ -535,13 +619,25 @@ const transporter = nodemailer.createTransport({
 
 const requestOTP = async (req, res) => {
     try {
-        const { email } = req.body;
-        if (!email) return res.status(400).json({ error: "Email is required!" });
+    const email = String(req.body?.email || "").trim().toLowerCase();
+    if (!email) return res.status(400).json({ error: "Email is required!" });
+
+    const otpWindow = ensureOtpCanSend(email);
+    if (!otpWindow.ok) {
+      return res.status(otpWindow.code || 429).json({
+        error: otpWindow.error,
+        retryAfterSec: otpWindow.retryAfterSec || otpSeconds(OTP_COOLDOWN_MS),
+      });
+    }
 
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const now = Date.now();
         otpStore[email] = {
             otp: otp,
-            expires: Date.now() + 300000 
+      expires: now + OTP_TTL_MS,
+      lastSentAt: now,
+      failedAttempts: 0,
+      lockedUntil: null,
         };
 
         await transporter.sendMail({
@@ -550,7 +646,11 @@ const requestOTP = async (req, res) => {
             subject: 'Your OTP for Password Reset',
             text: `Your OTP is: ${otp}. It will expire in 5 minutes.`
         });
-        res.status(200).json({ message: 'OTP sent successfully' });
+        res.status(200).json({
+          message: 'OTP sent successfully',
+          expiresInSec: otpSeconds(OTP_TTL_MS),
+          cooldownSec: otpSeconds(OTP_COOLDOWN_MS),
+        });
     } catch (error) {
         console.error("OTP Request Error:", error);
         res.status(500).json({ message: 'Failed to send email' });
@@ -564,20 +664,16 @@ const verifyOTP = async (req, res) => {
     const { email, otp, newPassword } = req.body;
 
     try {
-        const storedData = otpStore[email];
-
-        if (!storedData) {
-            console.log("❌ ไม่พบการขอ OTP สำหรับอีเมลนี้");
-            return res.status(400).json({ error: "Invalid OTP or OTP expired." });
-        }
-        if (Date.now() > storedData.expires) {
-            delete otpStore[email]; // ลบทิ้งถ้าหมดอายุ
-            console.log("❌ OTP หมดอายุแล้ว");
-            return res.status(400).json({ error: "OTP expired." });
-        }
-        if (String(storedData.otp) !== String(otp)) {
-            console.log("❌ รหัส OTP ไม่ตรงกัน! ในระบบ:", storedData.otp, "ที่ส่งมา:", otp);
-            return res.status(400).json({ error: "Invalid OTP." });
+        const normalizedEmail = String(email || "").trim().toLowerCase();
+        const otpCheck = verifyOtpForEmail(normalizedEmail, otp);
+        if (!otpCheck.ok) {
+            if (otpCheck.retryAfterSec) {
+              return res.status(otpCheck.code || 400).json({ error: otpCheck.error, retryAfterSec: otpCheck.retryAfterSec });
+            }
+            if (typeof otpCheck.remainingAttempts === "number") {
+              return res.status(otpCheck.code || 400).json({ error: otpCheck.error, remainingAttempts: otpCheck.remainingAttempts });
+            }
+            return res.status(otpCheck.code || 400).json({ error: otpCheck.error });
         }
 
         console.log("✅ OTP ถูกต้อง! กำลังอัปเดตรหัสผ่านใหม่ใน Database...");
@@ -588,7 +684,7 @@ const verifyOTP = async (req, res) => {
 
         const result = await db.run(
             "UPDATE users SET userPassword = ? WHERE userEmail = ?",
-            [newPassword, email]
+            [newPassword, normalizedEmail]
         );
 
         await db.close();
@@ -597,7 +693,7 @@ const verifyOTP = async (req, res) => {
             console.log("❌ ไม่พบ User นี้ในฐานข้อมูลจริง (UPDATE ไม่สำเร็จ)");
             return res.status(404).json({ error: "User not found in database." });
         }
-        delete otpStore[email];
+        delete otpStore[normalizedEmail];
 
         console.log("🎉 อัปเดตรหัสผ่านสำเร็จ!");
         res.status(200).json({ message: "Update password successfully" });
@@ -606,6 +702,149 @@ const verifyOTP = async (req, res) => {
         console.error("🔥 Error ใน verifyOTP:", error);
         res.status(500).json({ error: "Internal server error" });
     }
+};
+
+const resetPinWithOtp = async (req, res) => {
+  try {
+    const { email, password, otp, newPin } = req.body || {};
+    const normalizedEmail = String(email || "").trim().toLowerCase();
+
+    if (!normalizedEmail || !password || !otp || !newPin) {
+      return res.status(400).json({ error: "email, password, otp, and newPin are required" });
+    }
+
+    if (!PIN_REGEX.test(String(newPin))) {
+      return res.status(400).json({ error: "PIN must be exactly 6 digits" });
+    }
+
+    const otpCheck = verifyOtpForEmail(normalizedEmail, otp);
+    if (!otpCheck.ok) {
+      if (otpCheck.retryAfterSec) {
+        return res.status(otpCheck.code || 400).json({ error: otpCheck.error, retryAfterSec: otpCheck.retryAfterSec });
+      }
+      if (typeof otpCheck.remainingAttempts === "number") {
+        return res.status(otpCheck.code || 400).json({ error: otpCheck.error, remainingAttempts: otpCheck.remainingAttempts });
+      }
+      return res.status(otpCheck.code || 400).json({ error: otpCheck.error });
+    }
+
+    const db = await open({
+      filename: "./database/remote.db",
+      driver: sqlite3Verbose.Database,
+    });
+
+    const user = await db.get(
+      "SELECT userId, userEmail, userPassword FROM users WHERE lower(userEmail) = ?",
+      [normalizedEmail],
+    );
+
+    if (!user || String(user.userPassword) !== String(password)) {
+      await db.close();
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
+
+    await db.run("UPDATE users SET userPin = ? WHERE userId = ?", [String(newPin), user.userId]);
+
+    await writeActivityLog(db, {
+      actorUserId: user.userId,
+      actorEmail: user.userEmail,
+      action: "ACCOUNT_PIN_RESET",
+      targetType: "USER",
+      targetId: String(user.userId),
+      ipAddress: getClientIp(req),
+      status: "SUCCESS",
+      details: "User reset PIN with email/password/otp verification",
+    });
+
+    await db.close();
+    delete otpStore[normalizedEmail];
+    return res.status(200).json({ message: "PIN reset successfully" });
+  } catch (error) {
+    console.error("resetPinWithOtp error:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+const changePinWithOtp = async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { email, password, otp, oldPin, newPin } = req.body || {};
+    const normalizedEmail = String(email || "").trim().toLowerCase();
+
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: "Invalid user id" });
+    }
+
+    if (!normalizedEmail || !password || !otp || !oldPin || !newPin) {
+      return res.status(400).json({ error: "email, password, otp, oldPin, and newPin are required" });
+    }
+
+    if (!PIN_REGEX.test(String(oldPin)) || !PIN_REGEX.test(String(newPin))) {
+      return res.status(400).json({ error: "PIN must be exactly 6 digits" });
+    }
+
+    const otpCheck = verifyOtpForEmail(normalizedEmail, otp);
+    if (!otpCheck.ok) {
+      if (otpCheck.retryAfterSec) {
+        return res.status(otpCheck.code || 400).json({ error: otpCheck.error, retryAfterSec: otpCheck.retryAfterSec });
+      }
+      if (typeof otpCheck.remainingAttempts === "number") {
+        return res.status(otpCheck.code || 400).json({ error: otpCheck.error, remainingAttempts: otpCheck.remainingAttempts });
+      }
+      return res.status(otpCheck.code || 400).json({ error: otpCheck.error });
+    }
+
+    const db = await open({
+      filename: "./database/remote.db",
+      driver: sqlite3Verbose.Database,
+    });
+
+    const permission = await enforceSelfOrAdmin(db, req, id);
+    if (!permission.allowed) {
+      await db.close();
+      return res.status(permission.code).json({ error: permission.error });
+    }
+
+    const user = await db.get(
+      "SELECT userId, userEmail, userPassword, userPin FROM users WHERE userId = ?",
+      [id],
+    );
+
+    if (!user) {
+      await db.close();
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    if (String(user.userEmail || "").toLowerCase() !== normalizedEmail || String(user.userPassword) !== String(password)) {
+      await db.close();
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
+
+    if (String(user.userPin) !== String(oldPin)) {
+      await db.close();
+      return res.status(401).json({ error: "Old PIN is incorrect" });
+    }
+
+    await db.run("UPDATE users SET userPin = ? WHERE userId = ?", [String(newPin), id]);
+
+    await writeActivityLog(db, {
+      actorUserId: id,
+      actorEmail: user.userEmail,
+      action: "ACCOUNT_PIN_CHANGE",
+      targetType: "USER",
+      targetId: String(id),
+      ipAddress: getClientIp(req),
+      status: "SUCCESS",
+      details: "User changed PIN with old PIN and email/password/otp verification",
+    });
+
+    await db.close();
+    delete otpStore[normalizedEmail];
+    return res.status(200).json({ message: "PIN changed successfully" });
+  } catch (error) {
+    console.error("changePinWithOtp error:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
 };
 
 const getFaculties = async (req, res) => {
@@ -710,6 +949,8 @@ export default {
   changePassword,
   requestOTP,
   verifyOTP,
+  resetPinWithOtp,
+  changePinWithOtp,
   getFaculties,
   getAllStaff
 };
