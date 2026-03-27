@@ -60,6 +60,17 @@ class PinConfirmPage(tk.Frame):
             bg="#FFFFFF", fg="#64748B", bd=0, cursor="hand2",
             command=lambda: controller.show_frame("SignaturePage")).pack(pady=20)
 
+        tk.Button(
+            container,
+            text="Forgot PIN?",
+            font=("Arial", 10, "underline"),
+            bg="#FFFFFF",
+            fg="#4338CA",
+            bd=0,
+            cursor="hand2",
+            command=self.go_to_forgot_pin,
+        ).pack()
+
     def on_button_click(self, key):
         if key == "CLR":
             self.pin_code = ""
@@ -124,3 +135,6 @@ class PinConfirmPage(tk.Frame):
 
     def set_request_data(self, data):
         self.pending_payload = data or None
+
+    def go_to_forgot_pin(self):
+        self.controller.show_frame("ForgotPinPage", data={"pending_payload": self.pending_payload})
