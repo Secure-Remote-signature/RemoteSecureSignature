@@ -1,6 +1,7 @@
 import { open } from "sqlite";
 import sqlite3 from "sqlite3";
 import { getClientIp, writeActivityLog } from "../lib/activityLog.js";
+import { fetchMachineStatus } from "../lib/machineGateway.js";
 
 const sqlite3Verbose = sqlite3.verbose();
 
@@ -19,6 +20,11 @@ const DEFAULT_CNC_DEVICES = String(process.env.CNC_DEVICE_IDS || "PLT-ENG")
   .split(",")
   .map((value) => value.trim())
   .filter(Boolean);
+
+function getActorUserId(req) {
+  const parsed = Number(req.user?.id);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
 
 async function ensureSystemSettingsTable(db) {
   await db.exec(`
@@ -245,15 +251,37 @@ const getCncOverview = async (req, res) => {
       }
     }
 
-    const devices = Array.from(byDevice.values()).map((device) => ({
-      id: device.id,
-      name: device.name,
-      faculty: device.faculty,
-      status: device.status,
-      currentJob: device.currentJob,
-      queueCount: device.queue.length,
-      queue: device.queue,
-    }));
+    const devices = await Promise.all(
+      Array.from(byDevice.values()).map(async (device) => {
+        const statusResult = await fetchMachineStatus(device.id);
+
+        let machineStatus = "OFFLINE";
+        if (statusResult.ok && statusResult.source !== "not-configured") {
+          const normalized = String(statusResult.status || "").toLowerCase();
+          if (["busy", "running", "printing", "signing", "working"].includes(normalized)) {
+            machineStatus = "BUSY";
+          } else {
+            machineStatus = "ONLINE";
+          }
+        }
+
+        if (machineStatus === "ONLINE" && device.currentJob) {
+          machineStatus = "BUSY";
+        }
+
+        return {
+          id: device.id,
+          name: device.name,
+          faculty: device.faculty,
+          status: machineStatus,
+          currentJob: device.currentJob,
+          queueCount: device.queue.length,
+          queue: device.queue,
+          statusSource: statusResult.source || "unknown",
+          machineStatusRaw: statusResult.status || "unknown",
+        };
+      }),
+    );
 
     return res.status(200).json({ devices });
   } catch (error) {
@@ -325,11 +353,10 @@ const updateSystemSettings = async (req, res) => {
       );
     }
 
-    const actorIdRaw = req.headers["x-user-id"];
-    const actorId = Number(Array.isArray(actorIdRaw) ? actorIdRaw[0] : actorIdRaw);
-    const actor = Number.isInteger(actorId) ? await db.get("SELECT userEmail FROM users WHERE userId = ?", [actorId]) : null;
+    const actorId = getActorUserId(req);
+    const actor = actorId ? await db.get("SELECT userEmail FROM users WHERE userId = ?", [actorId]) : null;
     await writeActivityLog(db, {
-      actorUserId: Number.isInteger(actorId) ? actorId : null,
+      actorUserId: actorId,
       actorEmail: actor?.userEmail || null,
       action: "SYSTEM_SETTING_UPDATE",
       targetType: "SYSTEM",
@@ -383,15 +410,6 @@ const createUser = async (req, res) => {
       driver: sqlite3Verbose.Database,
     });
 
-    const beforeUser = await db.get(
-      `
-      SELECT userName, userLastname, userEmail, userRole, userPhone, userfacultyId, userPassword, userPin
-      FROM users
-      WHERE userId = ?
-      `,
-      [targetUserId],
-    );
-
     const userDate = new Date().toISOString();
     const result = await db.run(
       `
@@ -413,11 +431,10 @@ const createUser = async (req, res) => {
 
     await db.run(`UPDATE users SET userStatus = 'inactive' WHERE userId = ?`, [result.lastID]);
 
-    const actorIdRaw = req.headers["x-user-id"];
-    const actorId = Number(Array.isArray(actorIdRaw) ? actorIdRaw[0] : actorIdRaw);
-    const actor = Number.isInteger(actorId) ? await db.get("SELECT userEmail FROM users WHERE userId = ?", [actorId]) : null;
+    const actorId = getActorUserId(req);
+    const actor = actorId ? await db.get("SELECT userEmail FROM users WHERE userId = ?", [actorId]) : null;
     await writeActivityLog(db, {
-      actorUserId: Number.isInteger(actorId) ? actorId : null,
+      actorUserId: actorId,
       actorEmail: actor?.userEmail || null,
       action: "ACCOUNT_CREATE",
       targetType: "USER",
@@ -473,6 +490,15 @@ const updateUser = async (req, res) => {
       driver: sqlite3Verbose.Database,
     });
 
+    const beforeUser = await db.get(
+      `
+      SELECT userName, userLastname, userEmail, userRole, userPhone, userfacultyId, userPassword, userPin
+      FROM users
+      WHERE userId = ?
+      `,
+      [targetUserId],
+    );
+
     const result = await db.run(
       `
       UPDATE users
@@ -500,9 +526,8 @@ const updateUser = async (req, res) => {
       ],
     );
 
-    const actorIdRaw = req.headers["x-user-id"];
-    const actorId = Number(Array.isArray(actorIdRaw) ? actorIdRaw[0] : actorIdRaw);
-    const actor = Number.isInteger(actorId) ? await db.get("SELECT userEmail FROM users WHERE userId = ?", [actorId]) : null;
+    const actorId = getActorUserId(req);
+    const actor = actorId ? await db.get("SELECT userEmail FROM users WHERE userId = ?", [actorId]) : null;
     const target = await db.get("SELECT userEmail FROM users WHERE userId = ?", [targetUserId]);
 
     const changedFields = [];
@@ -529,7 +554,7 @@ const updateUser = async (req, res) => {
     }
 
     await writeActivityLog(db, {
-      actorUserId: Number.isInteger(actorId) ? actorId : null,
+      actorUserId: actorId,
       actorEmail: actor?.userEmail || null,
       action: "ACCOUNT_UPDATE",
       targetType: "USER",
@@ -570,9 +595,8 @@ const deleteUser = async (req, res) => {
       return res.status(400).json({ error: "Invalid user id" });
     }
 
-    const requesterIdRaw = req.headers["x-user-id"];
-    const requesterId = Number(Array.isArray(requesterIdRaw) ? requesterIdRaw[0] : requesterIdRaw);
-    if (Number.isInteger(requesterId) && requesterId === targetUserId) {
+    const requesterId = getActorUserId(req);
+    if (requesterId && requesterId === targetUserId) {
       return res.status(400).json({ error: "Cannot delete your own account" });
     }
 
@@ -583,11 +607,10 @@ const deleteUser = async (req, res) => {
 
     const result = await db.run("DELETE FROM users WHERE userId = ?", [targetUserId]);
 
-    const actorIdRaw = req.headers["x-user-id"];
-    const actorId = Number(Array.isArray(actorIdRaw) ? actorIdRaw[0] : actorIdRaw);
-    const actor = Number.isInteger(actorId) ? await db.get("SELECT userEmail FROM users WHERE userId = ?", [actorId]) : null;
+    const actorId = getActorUserId(req);
+    const actor = actorId ? await db.get("SELECT userEmail FROM users WHERE userId = ?", [actorId]) : null;
     await writeActivityLog(db, {
-      actorUserId: Number.isInteger(actorId) ? actorId : null,
+      actorUserId: actorId,
       actorEmail: actor?.userEmail || null,
       action: "ACCOUNT_DELETE",
       targetType: "USER",
