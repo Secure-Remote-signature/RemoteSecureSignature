@@ -43,7 +43,14 @@ function normalizeStatus(status?: string): AuditLog["status"] {
 }
 
 export default function AuditLogsPage() {
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedActions, setSelectedActions] = useState<string[]>([]);
+  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
@@ -54,7 +61,14 @@ export default function AuditLogsPage() {
       if (showLoading) setLoading(true);
       setErrorMsg("");
 
-      const res = await api.get(`${process.env.NEXT_PUBLIC_API_URL}/srs/admin/audit-logs?limit=300`);
+      const params = new URLSearchParams();
+      params.set("page", String(page));
+      params.set("limit", String(limit));
+      if (selectedActions.length > 0) params.set("action", selectedActions.join(","));
+      if (selectedStatuses.length > 0) params.set("status", selectedStatuses.join(","));
+      if (searchQuery.trim()) params.set("q", searchQuery.trim());
+
+      const res = await api.get(`${process.env.NEXT_PUBLIC_API_URL}/srs/admin/audit-logs?${params.toString()}`);
       const rows = (res.data?.logs || []) as Array<{
         id?: string;
         timestamp?: string;
@@ -65,6 +79,10 @@ export default function AuditLogsPage() {
         status?: string;
         details?: string;
       }>;
+
+      const pagination = res.data?.pagination || {};
+      setTotalPages(Math.max(1, Number(pagination.totalPages || 1)));
+      setTotalItems(Number(pagination.total || 0));
 
       const mapped: AuditLog[] = rows.map((row, index) => ({
         id: row.id || `LOG-${index + 1}`,
@@ -87,7 +105,7 @@ export default function AuditLogsPage() {
     } finally {
       if (showLoading) setLoading(false);
     }
-  }, []);
+  }, [limit, page, searchQuery, selectedActions, selectedStatuses]);
 
   useEffect(() => {
     void fetchAuditLogs(true);
@@ -103,19 +121,59 @@ export default function AuditLogsPage() {
     return unsubscribe;
   }, [fetchAuditLogs]);
 
-  const filteredLogs = useMemo(() => {
-    const keyword = searchTerm.trim().toLowerCase();
-    if (!keyword) return logs;
+  const actionOptions = [
+    "LOGIN",
+    "LOGOUT",
+    "SIGN_REQUEST",
+    "ACCOUNT_CREATE",
+    "ACCOUNT_UPDATE",
+    "ACCOUNT_DELETE",
+    "ACCOUNT_PASSWORD_CHANGE",
+    "ACCOUNT_PIN_CHANGE",
+    "ACCOUNT_PIN_RESET",
+    "MACHINE_CONTROL",
+    "SYSTEM_SETTING_UPDATE",
+    "UNAUTHORIZED",
+    "FORBIDDEN",
+    "ACCESS_DENIED",
+  ];
 
-    return logs.filter(
-      (log) =>
-        log.user.toLowerCase().includes(keyword) ||
-        log.action.toLowerCase().includes(keyword) ||
-        log.id.toLowerCase().includes(keyword) ||
-        log.details.toLowerCase().includes(keyword) ||
-        (log.targetDevice || "").toLowerCase().includes(keyword),
-    );
-  }, [logs, searchTerm]);
+  const statusOptions = ["SUCCESS", "FAILED", "WARNING"];
+
+  const visiblePages = useMemo(() => {
+    const start = Math.max(1, page - 2);
+    const end = Math.min(totalPages, page + 2);
+    const numbers: number[] = [];
+    for (let current = start; current <= end; current += 1) {
+      numbers.push(current);
+    }
+    return numbers;
+  }, [page, totalPages]);
+
+  const applySearch = () => {
+    setPage(1);
+    setSearchQuery(searchInput.trim());
+  };
+
+  const resetFilters = () => {
+    setSearchInput("");
+    setSearchQuery("");
+    setSelectedActions([]);
+    setSelectedStatuses([]);
+    setLimit(20);
+    setPage(1);
+  };
+
+  const toggleMulti = (value: string, selected: string[], setter: React.Dispatch<React.SetStateAction<string[]>>) => {
+    setter((prev) => {
+      const exists = prev.includes(value);
+      if (exists) {
+        return prev.filter((item) => item !== value);
+      }
+      return [...prev, value];
+    });
+    setPage(1);
+  };
 
   const getActionStyle = (action: string) => {
     switch (action) {
@@ -145,15 +203,77 @@ export default function AuditLogsPage() {
             <h1 className="text-2xl font-bold text-gray-800">ระบบบันทึกประวัติ (Audit Logs)</h1>
             <p className="text-sm text-gray-500 mt-1">ตรวจสอบกิจกรรมและการเข้าถึงระบบทั้งหมด (Immutable Records)</p>
           </div>
-          <div className="w-full sm:w-72 relative">
-            <input 
-              type="text" 
-              placeholder="ค้นหาผู้ใช้, Action, หรือ Log ID..." 
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm bg-white"
-            />
-            <svg className="w-5 h-5 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+          <div className="w-full sm:w-auto text-xs text-gray-500">ทั้งหมด {totalItems.toLocaleString()} รายการ</div>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+            <div className="md:col-span-2 relative">
+              <input
+                type="text"
+                placeholder="ค้นหาผู้ใช้, Action, Log ID, รายละเอียด..."
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") applySearch();
+                }}
+                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm bg-white"
+              />
+              <svg className="w-5 h-5 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+            </div>
+
+            <details className="px-3 py-2 border border-gray-200 rounded-xl text-sm bg-white">
+              <summary className="cursor-pointer select-none font-medium text-gray-700">
+                กิจกรรม ({selectedActions.length === 0 ? "ทั้งหมด" : selectedActions.length})
+              </summary>
+              <div className="mt-2 max-h-36 overflow-y-auto space-y-1">
+                {actionOptions.map((option) => (
+                  <label key={option} className="flex items-center gap-2 text-xs text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={selectedActions.includes(option)}
+                      onChange={() => toggleMulti(option, selectedActions, setSelectedActions)}
+                      className="rounded border-gray-300"
+                    />
+                    <span>{option.replace(/_/g, " ")}</span>
+                  </label>
+                ))}
+              </div>
+            </details>
+
+            <details className="px-3 py-2 border border-gray-200 rounded-xl text-sm bg-white">
+              <summary className="cursor-pointer select-none font-medium text-gray-700">
+                สถานะ ({selectedStatuses.length === 0 ? "ทั้งหมด" : selectedStatuses.length})
+              </summary>
+              <div className="mt-2 space-y-1">
+                {statusOptions.map((option) => (
+                  <label key={option} className="flex items-center gap-2 text-xs text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={selectedStatuses.includes(option)}
+                      onChange={() => toggleMulti(option, selectedStatuses, setSelectedStatuses)}
+                      className="rounded border-gray-300"
+                    />
+                    <span>{option}</span>
+                  </label>
+                ))}
+              </div>
+            </details>
+
+            <div className="flex gap-2">
+              <button
+                onClick={applySearch}
+                className="flex-1 px-3 py-2 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition-colors"
+              >
+                ค้นหา
+              </button>
+              <button
+                onClick={resetFilters}
+                className="px-3 py-2 rounded-xl bg-gray-100 text-gray-700 text-sm font-semibold hover:bg-gray-200 transition-colors"
+              >
+                ล้าง
+              </button>
+            </div>
           </div>
         </div>
 
@@ -177,7 +297,7 @@ export default function AuditLogsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {filteredLogs.map((log) => (
+                {logs.map((log) => (
                   <tr key={log.id} className="hover:bg-gray-50/50 transition-colors">
                     <td className="px-6 py-4">
                       <div className="text-sm font-bold text-gray-700">{log.id}</div>
@@ -210,7 +330,7 @@ export default function AuditLogsPage() {
                     </td>
                   </tr>
                 ))}
-                {filteredLogs.length === 0 && (
+                {logs.length === 0 && (
                   <tr>
                     <td colSpan={6} className="px-6 py-12 text-center text-gray-500 text-sm">
                       {loading ? "กำลังโหลดข้อมูล..." : "ไม่พบข้อมูล Log ที่ค้นหา"}
@@ -219,6 +339,57 @@ export default function AuditLogsPage() {
                 )}
               </tbody>
             </table>
+          </div>
+
+          <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/60 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <span>แสดงต่อหน้า</span>
+              <select
+                value={limit}
+                onChange={(e) => {
+                  setLimit(Number(e.target.value));
+                  setPage(1);
+                }}
+                className="px-2 py-1 border border-gray-200 rounded-lg bg-white"
+              >
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
+
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPage((prev) => Math.max(prev - 1, 1))}
+                disabled={page <= 1}
+                className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                ก่อนหน้า
+              </button>
+
+              {visiblePages.map((pageNumber) => (
+                <button
+                  key={pageNumber}
+                  onClick={() => setPage(pageNumber)}
+                  className={`min-w-9 px-3 py-1.5 rounded-lg text-sm border transition-colors ${
+                    pageNumber === page
+                      ? "bg-indigo-600 border-indigo-600 text-white"
+                      : "bg-white border-gray-200 text-gray-700 hover:bg-gray-100"
+                  }`}
+                >
+                  {pageNumber}
+                </button>
+              ))}
+
+              <button
+                onClick={() => setPage((prev) => Math.min(prev + 1, totalPages))}
+                disabled={page >= totalPages}
+                className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                ถัดไป
+              </button>
+            </div>
           </div>
         </div>
 
