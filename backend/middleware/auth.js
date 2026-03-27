@@ -1,26 +1,73 @@
-export function requireAuth(req, res, next) {
+import { open } from "sqlite";
+import sqlite3 from "sqlite3";
+import { getClientIp, writeActivityLog } from "../lib/activityLog.js";
+
+const sqlite3Verbose = sqlite3.verbose();
+
+async function logAuthDeny(req, { status = "FAILED", details = "Unauthorized", action = "ACCESS_DENIED" } = {}) {
+  try {
+    const db = await open({
+      filename: "./database/remote.db",
+      driver: sqlite3Verbose.Database,
+    });
+
+    await writeActivityLog(db, {
+      actorUserId: null,
+      actorEmail: null,
+      action,
+      targetType: "API",
+      targetId: `${req.method} ${req.originalUrl || req.url}`,
+      targetDevice: "-",
+      ipAddress: getClientIp(req),
+      status,
+      details,
+      metadata: {
+        method: req.method,
+        path: req.originalUrl || req.url,
+      },
+    });
+
+    await db.close();
+  } catch (error) {
+    console.error("logAuthDeny error:", error);
+  }
+}
+
+export async function requireAuth(req, res, next) {
   const authHeader = String(req.headers.authorization || "");
   if (!authHeader.startsWith("Bearer ")) {
+    await logAuthDeny(req, {
+      action: "UNAUTHORIZED",
+      details: "Missing or invalid Authorization header",
+    });
     return res.status(401).json({ error: "Unauthorized" });
   }
 
   const token = authHeader.slice(7).trim();
   if (!token) {
+    await logAuthDeny(req, {
+      action: "UNAUTHORIZED",
+      details: "Empty bearer token",
+    });
     return res.status(401).json({ error: "Unauthorized" });
   }
 
   return next();
 }
 
-export function requireAdminRole(req, res, next) {
+export async function requireAdminRole(req, res, next) {
   const role = String(req.headers["x-user-role"] || "").toLowerCase();
   if (!role.includes("admin")) {
+    await logAuthDeny(req, {
+      action: "FORBIDDEN",
+      details: `Admin role required, received role: ${role || "unknown"}`,
+    });
     return res.status(403).json({ error: "Admin access required" });
   }
 
   return next();
 }
 
-export function requireAdminAccess(req, res, next) {
+export async function requireAdminAccess(req, res, next) {
   return requireAuth(req, res, () => requireAdminRole(req, res, next));
 }
