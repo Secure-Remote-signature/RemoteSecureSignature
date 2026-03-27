@@ -1,55 +1,146 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import api, { isAxiosError } from "@/app/lib/api";
+import { subscribeRealtime } from "@/app/lib/realtime";
 
-const devices = [
-  { id: "PLT-ENG", name: "Engineering Plotter", faculty: "Engineering", status: "BUSY", currentJob: "JOB-1045", ip: "192.168.1.45" },
-  { id: "PLT-SCI", name: "Science Plotter", faculty: "Science", status: "ONLINE", currentJob: null, ip: "192.168.1.112" },
-  { id: "PLT-BUS", name: "Business Plotter", faculty: "Business", status: "OFFLINE", currentJob: null, ip: "192.168.1.50" },
-];
+type QueueItem = {
+  requestId: number;
+  id: string;
+  targetDevice: string;
+  requester: string;
+  signer: string;
+  addedAt: string;
+  status: string;
+};
 
-const mockLiveQueue = [
-  { id: "JOB-1046", targetDevice: "PLT-ENG", requester: "student2@example.com", signer: "dean.eng@example.com", addedAt: "11:10 AM" },
-  { id: "JOB-1047", targetDevice: "PLT-ENG", requester: "staff_a@example.com", signer: "prof.eng@example.com", addedAt: "11:12 AM" },
-  { id: "JOB-1048", targetDevice: "PLT-SCI", requester: "admin@example.com", signer: "prof.sci@example.com", addedAt: "11:15 AM" },
-];
+type Device = {
+  id: string;
+  name: string;
+  faculty: string;
+  status: string;
+  currentJob: string | null;
+  queueCount: number;
+  queue: QueueItem[];
+};
+
+function formatTime(value: string): string {
+  if (!value) return "-";
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return value;
+  const hh = String(dt.getHours()).padStart(2, "0");
+  const mm = String(dt.getMinutes()).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
 
 export default function CNCManagementPage() {
-  const [activeTab, setActiveTab] = useState(devices[0].id);
-  const [queue, setQueue] = useState(mockLiveQueue);
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [activeTab, setActiveTab] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [controlLoading, setControlLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
 
-  const activeDevice = devices.find(d => d.id === activeTab);
-  
-  const activeQueue = queue.filter(q => q.targetDevice === activeTab);
+  const fetchCncOverview = useCallback(async (showLoading = true) => {
+    try {
+      if (showLoading) setLoading(true);
+      setErrorMsg("");
+
+      const res = await api.get(`${process.env.NEXT_PUBLIC_API_URL}/srs/admin/cnc-overview?limit=300`);
+      const rows = (res.data?.devices || []) as Device[];
+      const mapped = rows.map((device) => ({
+        ...device,
+        queue: (device.queue || []).map((item) => ({
+          ...item,
+          addedAt: formatTime(item.addedAt),
+        })),
+      }));
+
+      setDevices(mapped);
+      if (mapped.length > 0) {
+        setActiveTab((prev) => (prev && mapped.some((d) => d.id === prev) ? prev : mapped[0].id));
+      } else {
+        setActiveTab("");
+      }
+    } catch (error: unknown) {
+      if (isAxiosError(error) && error.response) {
+        setErrorMsg(error.response.data?.error || "โหลดข้อมูล CNC ไม่สำเร็จ");
+      } else {
+        setErrorMsg("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้");
+      }
+    } finally {
+      if (showLoading) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchCncOverview(true);
+  }, [fetchCncOverview]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeRealtime((event) => {
+      if (event.type === "request.created" || event.type === "request.statusChanged") {
+        void fetchCncOverview(false);
+      }
+    });
+
+    return unsubscribe;
+  }, [fetchCncOverview]);
+
+  const activeDevice = useMemo(() => devices.find((d) => d.id === activeTab), [devices, activeTab]);
+  const activeQueue = activeDevice?.queue || [];
+
+  const sendMachineCommand = async (action: "E_STOP" | "TEST_PEN" | "HOME") => {
+    if (!activeDevice) return;
+    try {
+      setControlLoading(true);
+      const res = await api.post(`${process.env.NEXT_PUBLIC_API_URL}/srs/machine/control`, {
+        deviceId: activeDevice.id,
+        action,
+      });
+      setActionFeedback(res.data?.message || `ส่งคำสั่ง ${action} สำเร็จ`);
+    } catch (error: unknown) {
+      if (isAxiosError(error) && error.response) {
+        setActionFeedback(error.response.data?.error || `ส่งคำสั่ง ${action} ไม่สำเร็จ`);
+      } else {
+        setActionFeedback("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้");
+      }
+    } finally {
+      setControlLoading(false);
+    }
+  };
 
   const handleEStop = () => {
-    if (confirm(`🚨 ยืนยันการสั่งหยุดฉุกเฉิน (E-Stop) เครื่อง ${activeDevice?.name} ใช่หรือไม่?\n\nงานที่กำลังทำอยู่จะถูกยกเลิกทันที!`)) {
-      setActionFeedback(`[ส่งคำสั่ง API]: ส่งสัญญาณ E-STOP ไปที่ ${activeDevice?.ip} สำเร็จ`);
+    if (!activeDevice) return;
+    if (confirm(`🚨 ยืนยันการสั่งหยุดฉุกเฉิน (E-Stop) เครื่อง ${activeDevice.name} ใช่หรือไม่?\n\nงานที่กำลังทำอยู่จะถูกยกเลิกทันที!`)) {
+      void sendMachineCommand("E_STOP");
     }
   };
 
   const handleTestPen = () => {
-    setActionFeedback(`[ส่งคำสั่ง API]: สั่งทดสอบการลงปากกา (Calibration) ที่เครื่อง ${activeDevice?.name}`);
+    void sendMachineCommand("TEST_PEN");
   };
 
   const handleGoHome = () => {
-    setActionFeedback(`[ส่งคำสั่ง API]: สั่งหัวพิมพ์กลับจุดเริ่มต้น (Homing) ที่เครื่อง ${activeDevice?.name}`);
+    void sendMachineCommand("HOME");
   };
 
-  const handleRemoveQueue = (jobId: string) => {
-    if (confirm(`ยืนยันการลบคิวงาน ${jobId} ใช่หรือไม่?`)) {
-      setQueue(queue.filter(q => q.id !== jobId));
-      setActionFeedback(`ลบคิวงาน ${jobId} เรียบร้อยแล้ว`);
-    }
-  };
-
-  const handleMoveToTop = (jobId: string) => {
-    const jobToMove = queue.find(q => q.id === jobId);
-    if (jobToMove) {
-      const otherJobs = queue.filter(q => q.id !== jobId);
-      setQueue([jobToMove, ...otherJobs]);
-      setActionFeedback(`ย้ายคิว ${jobId} เป็นลำดับแรกเรียบร้อยแล้ว`);
+  const handleRemoveQueue = async (job: QueueItem) => {
+    if (confirm(`ยืนยันการยกเลิกคิวงาน ${job.id} ใช่หรือไม่?`)) {
+      try {
+        await api.put(`${process.env.NEXT_PUBLIC_API_URL}/srs/request/transition/${job.requestId}`, {
+          toStatus: "Rejected",
+          rejectReason: "Cancelled by admin from CNC panel",
+        });
+        setActionFeedback(`ยกเลิกคิวงาน ${job.id} เรียบร้อยแล้ว`);
+        await fetchCncOverview(false);
+      } catch (error: unknown) {
+        if (isAxiosError(error) && error.response) {
+          setActionFeedback(error.response.data?.error || `ยกเลิกคิวงาน ${job.id} ไม่สำเร็จ`);
+        } else {
+          setActionFeedback("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้");
+        }
+      }
     }
   };
 
@@ -71,6 +162,12 @@ export default function CNCManagementPage() {
           <p className="text-sm text-gray-500 mt-1">ควบคุมฮาร์ดแวร์, การทดสอบระบบ, และจัดการคิวงานแบบ Real-time</p>
         </div>
 
+        {errorMsg && (
+          <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {errorMsg}
+          </div>
+        )}
+
         {actionFeedback && (
           <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-medium text-indigo-700">
             <div className="flex items-center justify-between gap-3">
@@ -87,6 +184,9 @@ export default function CNCManagementPage() {
         )}
 
         <div className="flex overflow-x-auto pb-2 gap-2 snap-x">
+          {loading && devices.length === 0 && (
+            <div className="text-sm text-gray-500 px-2 py-2">กำลังโหลดข้อมูลเครื่อง...</div>
+          )}
           {devices.map((device) => (
             <button
               key={device.id}
@@ -118,13 +218,6 @@ export default function CNCManagementPage() {
                     </span>
                   </div>
                   
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-500">IP Address:</span>
-                    <span className="text-sm font-mono text-gray-700 bg-gray-50 px-2 py-1 rounded border border-gray-100">
-                      {activeDevice.ip}
-                    </span>
-                  </div>
-
                   <div className="pt-2 border-t border-gray-100">
                     <span className="text-sm text-gray-500 block mb-1">งานที่กำลังดำเนินการ:</span>
                     {activeDevice.currentJob ? (
@@ -147,7 +240,7 @@ export default function CNCManagementPage() {
                 <div className="space-y-3">
                   <button 
                     onClick={handleTestPen}
-                    disabled={activeDevice.status === 'BUSY' || activeDevice.status === 'OFFLINE'}
+                    disabled={controlLoading || activeDevice.status === 'BUSY' || activeDevice.status === 'OFFLINE'}
                     className="w-full py-3 px-4 bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-700 font-medium rounded-xl transition-colors flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
@@ -156,7 +249,7 @@ export default function CNCManagementPage() {
                   
                   <button 
                     onClick={handleGoHome}
-                    disabled={activeDevice.status === 'BUSY' || activeDevice.status === 'OFFLINE'}
+                    disabled={controlLoading || activeDevice.status === 'BUSY' || activeDevice.status === 'OFFLINE'}
                     className="w-full py-3 px-4 bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-700 font-medium rounded-xl transition-colors flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
@@ -166,6 +259,7 @@ export default function CNCManagementPage() {
                   <div className="pt-4 border-t border-gray-100 mt-4">
                     <button 
                       onClick={handleEStop}
+                      disabled={controlLoading}
                       className="w-full py-4 px-4 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl shadow-lg shadow-rose-200 transition-colors flex justify-center items-center gap-2"
                     >
                       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
@@ -215,17 +309,8 @@ export default function CNCManagementPage() {
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-500">{job.addedAt}</td>
                           <td className="px-6 py-4 text-right space-x-2">
-                            {index !== 0 && (
-                              <button 
-                                onClick={() => handleMoveToTop(job.id)}
-                                className="text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 transition-colors"
-                                title="ลัดคิวให้เป็นคิวแรก"
-                              >
-                                ลัดคิว (Skip)
-                              </button>
-                            )}
                             <button 
-                              onClick={() => handleRemoveQueue(job.id)}
+                              onClick={() => void handleRemoveQueue(job)}
                               className="text-xs font-medium px-3 py-1.5 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors"
                             >
                               ยกเลิกงาน
