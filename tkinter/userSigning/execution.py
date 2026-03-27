@@ -8,6 +8,7 @@ from websocket import create_connection
 from userSigning.reject_reason import prompt_reject_reason
 from app_config import (
     build_api_url,
+    build_auth_headers,
     CNC_WS_URL,
     CNC_WS_SEND_TIMEOUT_SEC,
     CNC_WS_ACK_TIMEOUT_SEC,
@@ -140,7 +141,8 @@ class ExecutionPage(tk.Frame):
             res = requests.put(
                 build_api_url(f"/srs/request/update-status/{request_id}"),
                 json={"status": status},
-                timeout=5
+                timeout=5,
+                headers=build_auth_headers(self.controller),
             )
         except Exception as exc:
             raise RuntimeError(f"อัปเดตสถานะเป็น {status} ไม่สำเร็จ: {exc}")
@@ -332,6 +334,7 @@ class ExecutionPage(tk.Frame):
                     build_api_url(f"/srs/request/update-status/{req_id}"),
                     json={"status": "Rejected", "rejectReason": reason},
                     timeout=5,
+                    headers=build_auth_headers(self.controller),
                 )
             except Exception:
                 messagebox.showerror("Error", "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้", parent=self.winfo_toplevel())
