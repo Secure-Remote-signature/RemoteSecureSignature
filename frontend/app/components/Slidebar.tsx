@@ -1,5 +1,4 @@
 "use client";
-
 import React, { useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -10,11 +9,9 @@ interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
 }
-
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
-  const pathname = usePathname(); // เช็คว่าเราอยู่หน้าไหน เพื่อ highlight เมนูนั้น
+  const pathname = usePathname();
   const router = useRouter();
-
   const menuItems = useMemo(() => {
     let role = '';
     const session = sessionStorage.getItem('user_session');
@@ -25,16 +22,14 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         role = '';
       }
     }
-
     const isAdmin = role.includes('admin');
-
     if (isAdmin) {
       return [
         { name: 'แอดมินแดชบอร์ด', href: '/admin/dashboard', icon: Shield },
         { name: 'จัดการผู้ใช้', href: '/admin/usersManagement', icon: Users },
         { name: 'ประวัติการทำงาน', href: '/admin/auditLog', icon: History },
         { name: 'จัดการเครื่องจักร', href: '/admin/cncManagement', icon: FilePen },
-        { name: 'การตั้งค่า', href: '/admin/systemSetting', icon: Settings },
+        { name: 'การตั้งค่าระบบ', href: '/admin/systemSetting', icon: Settings },
       ];
     }
 
@@ -45,14 +40,12 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       { name: 'คำร้องขอ', href: '/requestpage', icon: FilePen },
     ];
   }, []);
-
   const handleLogout = () => {
     if (confirm("คุณต้องการออกจากระบบใช่หรือไม่?")) {
       sessionStorage.removeItem("user_session");
       router.push("/login");
     }
   };
-
   return (
     <>
       <div 
@@ -61,20 +54,17 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         `}
         onClick={onClose}
       />
-
       <aside 
         className={`fixed top-0 left-0 h-full w-64 bg-white shadow-2xl z-50 transform transition-transform duration-300 ease-in-out flex flex-col
           ${isOpen ? 'translate-x-0' : '-translate-x-full'}
         `}
       >
-        {/* ส่วนหัว Sidebar */}
         <div className="h-16 flex items-center justify-between px-6 border-b border-gray-100">
            <h2 className="text-xl font-bold text-indigo-600">Menu</h2>
            <button onClick={onClose} className="text-gray-400 hover:text-red-500 transition-colors">
              <X size={24} />
            </button>
         </div>
-
         <nav className="flex-1 p-4 space-y-2">
           {menuItems.map((item) => {
             const isActive = pathname === item.href;
@@ -95,7 +85,6 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             );
           })}
         </nav>
-
         <div className="p-4 border-t border-gray-100">
           <button 
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-500 hover:bg-red-50 transition-colors font-medium"
