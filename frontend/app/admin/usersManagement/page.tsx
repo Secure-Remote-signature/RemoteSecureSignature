@@ -9,6 +9,7 @@ interface User {
   userEmail: string;
   userRole: string;
   userStatus: string;
+  effectiveStatus: string;
   userPhone: string;
   userfacultyId: number;
   facultyName: string;
@@ -21,6 +22,7 @@ interface AdminUserApi {
   userEmail: string;
   userRole: string;
   userStatus?: string;
+  effectiveStatus?: string;
   userPhone?: string;
   userfacultyId?: number;
   facultyName?: string;
@@ -108,6 +110,7 @@ export default function AdminUsersPage() {
         userEmail: user.userEmail ?? '',
         userRole: user.userRole ?? '-',
         userStatus: String(user.userStatus ?? 'inactive').toLowerCase(),
+        effectiveStatus: String(user.effectiveStatus ?? user.userStatus ?? 'inactive').toLowerCase(),
         userPhone: user.userPhone ?? '',
         userfacultyId: Number(user.userfacultyId ?? 0),
         facultyName: user.facultyName ?? '-',
@@ -136,6 +139,14 @@ export default function AdminUsersPage() {
 
   useEffect(() => {
     void Promise.all([loadUsers(), loadFaculties()]);
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      void loadUsers();
+    }, 30000);
+
+    return () => clearInterval(interval);
   }, []);
 
   const filteredUsers = useMemo(() => {
@@ -371,12 +382,12 @@ export default function AdminUsersPage() {
                   <td className="px-6 py-4">
                     <span
                       className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${
-                        user.userStatus === 'active'
+                        user.effectiveStatus === 'active'
                           ? 'bg-emerald-50 text-emerald-700'
                           : 'bg-slate-100 text-slate-600'
                       }`}
                     >
-                      {user.userStatus === 'active' ? 'active' : 'inactive'}
+                      {user.effectiveStatus === 'active' ? 'active' : 'inactive'}
                     </span>
                   </td>
                   <td className="px-6 py-4">
