@@ -1,10 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import "@/app/styles/globals.css";
 import MainNavbar from "../components/MainNavbar";
 import Slidebar from "../components/Slidebar";
+import SessionTimeoutGuard from "../components/SessionTimeoutGuard";
+
+type AuthStatus = {
+  checking: boolean;
+  isValid: boolean;
+  isAdmin: boolean;
+  shouldClear: boolean;
+};
 
 export default function AdminLayout({
   children,
@@ -13,15 +21,18 @@ export default function AdminLayout({
 }>) {
   const router = useRouter();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [authStatus, setAuthStatus] = useState<AuthStatus>({
+    checking: true,
+    isValid: false,
+    isAdmin: false,
+    shouldClear: false,
+  });
 
-  const authStatus = useMemo(() => {
-    if (typeof window === "undefined") {
-      return { checking: true, isValid: false, isAdmin: false, shouldClear: false };
-    }
-
+  useEffect(() => {
     const session = sessionStorage.getItem("user_session");
     if (!session) {
-      return { checking: false, isValid: false, isAdmin: false, shouldClear: false };
+      setAuthStatus({ checking: false, isValid: false, isAdmin: false, shouldClear: false });
+      return;
     }
 
     try {
@@ -29,9 +40,9 @@ export default function AdminLayout({
       const role = String(parsed?.role ?? "").toLowerCase();
       const isValid = Boolean(parsed?.id);
       const isAdmin = role.includes("admin");
-      return { checking: false, isValid, isAdmin, shouldClear: false };
+      setAuthStatus({ checking: false, isValid, isAdmin, shouldClear: false });
     } catch {
-      return { checking: false, isValid: false, isAdmin: false, shouldClear: true };
+      setAuthStatus({ checking: false, isValid: false, isAdmin: false, shouldClear: true });
     }
   }, []);
 
@@ -68,6 +79,7 @@ export default function AdminLayout({
 
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-[#F9FAFB]">
+      <SessionTimeoutGuard />
       <header className="w-full bg-white relative z-30">
         <MainNavbar onMenuClick={() => setIsSidebarOpen(true)} />
       </header>
