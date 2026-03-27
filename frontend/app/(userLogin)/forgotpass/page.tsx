@@ -16,13 +16,21 @@ export default function ForgotPass() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
+
+    const normalizedEmail = email.trim();
+    if (!normalizedEmail) {
+      setErrorMsg('กรุณากรอกอีเมล');
+      return;
+    }
+
     setIsLoading(true);
 
     try {
       await api.post(`${process.env.NEXT_PUBLIC_API_URL}/srs/user/request-otp`, {
-        email,
+        email: normalizedEmail,
       });
 
+      setEmail(normalizedEmail);
       setIsSuccess(true);
     } catch (error: unknown) {
       if (isAxiosError(error) && error.response) {
@@ -130,7 +138,7 @@ export default function ForgotPass() {
             </h1>
             
             <p className="text-gray-500 text-sm 2xl:text-base mb-6">
-              เราได้ส่งลิงก์สำหรับตั้งรหัสผ่านใหม่ไปที่ <br/>
+              เราได้ส่งรหัส OTP สำหรับตั้งรหัสผ่านใหม่ไปที่ <br/>
               <span className="font-semibold text-gray-800 break-all">{email}</span>
             </p>
 
