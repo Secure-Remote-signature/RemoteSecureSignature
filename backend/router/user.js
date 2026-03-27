@@ -9,7 +9,7 @@ user.post("/createuser", userController.createUser);
 user.post("/login", userController.loginUser);
 user.post("/logout", requireAuth, userController.logoutUser);
 user.post("/heartbeat", requireAuth, userController.heartbeatUser);
-user.post("/verify-pin", userController.verifyUserPin);
+user.post("/verify-pin", requireAuth, userController.verifyUserPin);
 user.delete("/deluser/:id", requireAuth, userController.deluser);
 user.put('/updateuser/:id', requireAuth, userController.updateUser);
 user.get('/profile/:id', requireAuth, userController.getUserProfile);
