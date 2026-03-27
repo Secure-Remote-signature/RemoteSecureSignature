@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   FilePlus, CheckCircle, Loader2, ChevronRight, Camera, 
@@ -14,6 +14,10 @@ interface Professor {
     userId: string;
     userName: string;
     userLastname: string;
+    userEmail?: string;
+    userPhone?: string;
+    userRole?: string;
+    facultyName?: string;
 }
 
 export default function RequestDocumentPage() {
@@ -25,6 +29,7 @@ export default function RequestDocumentPage() {
     // --- ข้อมูล User และรายชื่ออาจารย์ ---
     const [professors, setProfessors] = useState<Professor[]>([]);
     const [selectedProfId, setSelectedProfId] = useState("");
+    const [recipientSearch, setRecipientSearch] = useState("");
     const [currentUserId, setCurrentUserId] = useState("");
 
     // --- ข้อมูลฟอร์ม ---
@@ -47,28 +52,93 @@ export default function RequestDocumentPage() {
     // 1. ดึงข้อมูล User และ รายชื่ออาจารย์ ทันทีที่โหลดหน้า
     useEffect(() => {
         const savedData = sessionStorage.getItem("user_session");
-        if (savedData) {
+        if (!savedData) {
+            sessionStorage.setItem("auth_notice", "กรุณาเข้าสู่ระบบก่อนส่งคำร้อง");
+            router.replace("/login");
+            return;
+        }
+
+        let userId = "";
+        try {
             const user = JSON.parse(savedData);
-            setCurrentUserId(user.id);
+            userId = String(user?.id ?? user?.userId ?? "");
+            if (!userId) {
+                throw new Error("invalid session");
+            }
+
+            const normalizedName = String(user?.name ?? user?.userName ?? "");
+            const normalizedLastName = String(user?.lastName ?? user?.userLastname ?? "");
+            const normalizedRole = String(user?.role ?? user?.userRole ?? "");
+
+            setCurrentUserId(userId);
             setFormData(prev => ({
                 ...prev,
-                Name: user.name,
-                LastName: user.lastName,
-                Id: user.id,
-                Role: user.role
+                Name: normalizedName,
+                LastName: normalizedLastName,
+                Id: userId,
+                Role: normalizedRole
             }));
+
+            // Fallback: if session does not have display name, fetch profile directly.
+            if (!normalizedName && !normalizedLastName) {
+                void api
+                    .get(`${process.env.NEXT_PUBLIC_API_URL}/srs/user/profile/${userId}`)
+                    .then((res) => {
+                        const profile = res.data ?? {};
+                        setFormData((prev) => ({
+                            ...prev,
+                            Name: String(profile?.userName ?? ""),
+                            LastName: String(profile?.userLastname ?? ""),
+                            Id: userId,
+                            Role: String(profile?.userRole ?? prev.Role ?? ""),
+                        }));
+                    })
+                    .catch((error) => {
+                        console.error("โหลดข้อมูลผู้ส่งคำร้องไม่สำเร็จ", error);
+                    });
+            }
+        } catch {
+            sessionStorage.removeItem("token");
+            sessionStorage.removeItem("user_session");
+            sessionStorage.setItem("auth_notice", "Session ไม่ถูกต้อง กรุณาเข้าสู่ระบบใหม่");
+            router.replace("/login");
+            return;
         }
 
         const fetchProfessors = async () => {
             try {
-                const res = await api.get(`${process.env.NEXT_PUBLIC_API_URL}/srs/user/staff`);
+                const res = await api.get(`${process.env.NEXT_PUBLIC_API_URL}/srs/user/staff?clientId=${userId}`);
                 setProfessors(res.data);
             } catch (err) {
                 console.error("ดึงรายชื่ออาจารย์ไม่สำเร็จ", err);
             }
         };
         fetchProfessors();
-    }, []);
+    }, [router]);
+
+    const selectedRecipient = useMemo(
+        () => professors.find((p) => String(p.userId) === String(selectedProfId)) || null,
+        [professors, selectedProfId],
+    );
+
+    const filteredRecipients = useMemo(() => {
+        const keyword = recipientSearch.trim().toLowerCase();
+        if (!keyword) return professors;
+
+        return professors.filter((p) => {
+            const fullName = `${p.userName} ${p.userLastname}`.toLowerCase();
+            const role = String(p.userRole || "").toLowerCase();
+            const email = String(p.userEmail || "").toLowerCase();
+            const phone = String(p.userPhone || "").toLowerCase();
+
+            return (
+                fullName.includes(keyword) ||
+                role.includes(keyword) ||
+                email.includes(keyword) ||
+                phone.includes(keyword)
+            );
+        });
+    }, [professors, recipientSearch]);
 
     // 2. ฟังก์ชันอัปโหลดรูป
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -95,6 +165,11 @@ export default function RequestDocumentPage() {
     // 4. ส่งข้อมูลไป Backend
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!currentUserId) {
+            sessionStorage.setItem("auth_notice", "กรุณาเข้าสู่ระบบก่อนส่งคำร้อง");
+            router.replace('/login');
+            return;
+        }
         if (!selectedProfId) return alert("กรุณาเลือกอาจารย์ที่จะส่งคำร้อง");
         if (!image) return alert("กรุณาเลือกรูปภาพเอกสาร");
 
@@ -191,16 +266,41 @@ export default function RequestDocumentPage() {
                                 {/* --- เพิ่ม Dropdown เลือกอาจารย์ --- */}
                                 <div>
                                     <p className="text-sm font-bold text-Slate-gray mb-2">ส่งถึงอาจารย์/เจ้าหน้าที่:</p>
+                                    <input
+                                        type="text"
+                                        value={recipientSearch}
+                                        onChange={(e) => setRecipientSearch(e.target.value)}
+                                        placeholder="ค้นหาชื่อ ตำแหน่ง อีเมล หรือเบอร์โทร"
+                                        className={inputStyle}
+                                    />
                                     <select 
                                         value={selectedProfId} 
                                         onChange={(e) => setSelectedProfId(e.target.value)}
                                         className={inputStyle}
                                     >
-                                        <option value="">--- กรุณาเลือกอาจารย์ ---</option>
-                                        {professors.map(p => (
-                                            <option key={p.userId} value={p.userId}>{p.userName} {p.userLastname}</option>
+                                        <option value="">--- กรุณาเลือกอาจารย์/เจ้าหน้าที่ ---</option>
+                                        {filteredRecipients.map(p => (
+                                            <option key={p.userId} value={p.userId}>
+                                                {p.userName} {p.userLastname} ({p.userRole || "staff"})
+                                            </option>
                                         ))}
                                     </select>
+
+                                    {recipientSearch.trim() && filteredRecipients.length === 0 && (
+                                        <p className="mt-2 text-sm text-gray-500">ไม่พบรายชื่อที่ตรงกับคำค้นหา</p>
+                                    )}
+
+                                    {selectedRecipient && (
+                                        <div className="mt-3 rounded-xl border border-indigo-100 bg-indigo-50/60 p-3 text-sm text-gray-700">
+                                            <p className="font-semibold text-indigo-700">
+                                                ผู้รับคำร้อง: {selectedRecipient.userName} {selectedRecipient.userLastname}
+                                            </p>
+                                            <p>ตำแหน่ง: {selectedRecipient.userRole || "-"}</p>
+                                            <p>คณะ: {selectedRecipient.facultyName || "-"}</p>
+                                            <p>อีเมล: {selectedRecipient.userEmail || "-"}</p>
+                                            <p>เบอร์โทร: {selectedRecipient.userPhone || "-"}</p>
+                                        </div>
+                                    )}
                                 </div>
 
                                 <input type="text" placeholder="หัวข้อเรื่อง (เช่น ขออนุมัติโครงการ...)" className={inputStyle} onChange={(e) => setFormData({...formData, subject: e.target.value})} />
