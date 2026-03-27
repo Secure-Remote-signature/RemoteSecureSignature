@@ -64,13 +64,14 @@ export default function JobHistoryPage() {
             <select 
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm bg-white min-w-[150px]"
+              className="px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm bg-white min-w-37.5"
             >
               <option value="ALL">ทุกสถานะ (All)</option>
               <option value="COMPLETED">สำเร็จ (Completed)</option>
               <option value="PROCESSING">กำลังทำงาน (Processing)</option>
               <option value="WAITING">รอคิว (Waiting)</option>
               <option value="FAILED">ล้มเหลว (Failed)</option>
+              <option value="CANCELLED">ยกเลิก (Cancelled)</option>
             </select>
 
             <div className="relative w-full sm:w-72">
