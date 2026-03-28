@@ -4,6 +4,7 @@ import requests
 import json
 import os
 from datetime import datetime
+from dotenv import load_dotenv
 import time
 from websocket import create_connection
 from userSigning.reject_reason import prompt_reject_reason
@@ -18,6 +19,10 @@ from app_config import (
 )
 
 class ExecutionPage(tk.Frame):
+    A4_WIDTH_MM = 210
+    A4_HEIGHT_MM = 297
+    A4_DPI = 300
+
     def __init__(self, parent, controller):
         super().__init__(parent, bg="#111827")
         self.controller = controller
@@ -33,6 +38,12 @@ class ExecutionPage(tk.Frame):
 
         self.setup_ui()
         self.setup_canvas_events()
+    load_dotenv()
+    @classmethod
+    def _a4_px_size(cls):
+        width = round(cls.A4_WIDTH_MM * cls.A4_DPI / 25.4)
+        height = round(cls.A4_HEIGHT_MM * cls.A4_DPI / 25.4)
+        return float(width), float(height)
 
     def set_machine_status(self, status):
         status_lc = str(status or "").strip().lower()
@@ -59,50 +70,83 @@ class ExecutionPage(tk.Frame):
             self.start_btn.config(state="normal", bg="#10B981", activebackground="#10B981", fg="white")
 
     def _extract_paper_size(self):
-        width = self.paper_width
-        height = self.paper_height
+        return self._a4_px_size()
 
-        if not width or not height:
-            width = self.current_request.get("paper_width") if self.current_request else 0
-            height = self.current_request.get("paper_height") if self.current_request else 0
-
+    def _to_positive_float(self, value, fallback):
         try:
-            width = float(width)
-        except Exception:
-            width = 0
-        try:
-            height = float(height)
-        except Exception:
-            height = 0
+            parsed = float(value)
+            if parsed > 0:
+                return parsed
+        except (TypeError, ValueError):
+            pass
+        return float(fallback)
 
-        return width, height
+    # --- Modified Section: Convert coordinates to millimeters (mm) ---
+    def _normalize_points_to_a4(self):
+        # Set target directly to 210.0 and 297.0 (mm)
+        target_w = float(self.A4_WIDTH_MM)
+        target_h = float(self.A4_HEIGHT_MM)
+
+        # source_w, source_h are the original dimensions of the uploaded image (usually in pixels)
+        source_w = self._to_positive_float(self.paper_width, target_w)
+        source_h = self._to_positive_float(self.paper_height, target_h)
+
+        # Calculate the scaling ratio from original dimensions to fit the 210x297 mm frame
+        scale_x = target_w / source_w
+        scale_y = target_h / source_h
+
+        if abs(scale_x - 1.0) < 1e-9 and abs(scale_y - 1.0) < 1e-9:
+            return self.signature_points, source_w, source_h, target_w, target_h
+
+        normalized_paths = []
+        for path in self.signature_points:
+            if not isinstance(path, list):
+                continue
+
+            normalized_path = []
+            for pt in path:
+                if not isinstance(pt, dict):
+                    continue
+                try:
+                    x = float(pt.get("x", 0.0))
+                    y = float(pt.get("y", 0.0))
+                except (TypeError, ValueError):
+                    continue
+
+                # Multiply x, y coordinates by the scale and round to 2 decimal places (in mm)
+                normalized_path.append({
+                    "x": round(x * scale_x, 2),
+                    "y": round(y * scale_y, 2),
+                })
+
+            if normalized_path:
+                normalized_paths.append(normalized_path)
+
+        return normalized_paths, source_w, source_h, target_w, target_h
 
     def _build_signature_task_payload(self, request_id):
-        width, height = self._extract_paper_size()
+        # Call the function that converts to mm
+        normalized_points, source_w, source_h, width, height = self._normalize_points_to_a4()
 
         return {
             "requestId": request_id,
             "generatedAt": datetime.utcnow().isoformat() + "Z",
-            "width": width,
-            "height": height,
-            "points_px": self.signature_points,
+            "width": width,   # Will be 210.0
+            "height": height, # Will be 297.0
+            "points_mm": normalized_points, # Changed from points_px to points_mm for clarity (if CNC supports it)
             "requestMeta": {
                 "requestRTSP": self.current_request.get("requestRTSP"),
                 "requestStatus": self.current_request.get("requestStatus"),
                 "requestFile": self.current_request.get("requestFile"),
             },
         }
+    # ----------------------------------------------------
 
     def _send_payload_to_cnc_ws(self, task_payload):
 
         if not CNC_WS_URL:
             raise RuntimeError("ยังไม่ได้ตั้งค่า TK_CNC_WS_URL สำหรับเครื่อง CNC")
 
-        # envelope = {
-        #     "type": "signature_task",
-        #     "sentAt": datetime.utcnow().isoformat() + "Z",
-        #     "data": task_payload,
-        # }
         payload_json = json.dumps(task_payload, ensure_ascii=False)
 
         last_error = None
@@ -179,7 +223,7 @@ class ExecutionPage(tk.Frame):
         main_container = tk.Frame(self, bg="#111827")
         main_container.pack(fill="both", expand=True, padx=12, pady=(6, 6))
 
-        # --- กล้องเฝ้าหน้างาน CNC ---
+        # --- CNC Live Monitoring Camera ---
         sig_frame = tk.LabelFrame(main_container, text=" กล้องเฝ้าหน้างาน CNC ", bg="#111827", fg="white")
         sig_frame.pack(fill="both", expand=True, padx=6, pady=(0, 6))
 
@@ -204,7 +248,7 @@ class ExecutionPage(tk.Frame):
         self.set_machine_status("ready")
         self._unlock_start_button_for_new_request()
 
-    # --- ระบบภาพกล้อง (Execution Monitor) ---
+    # --- Camera System (Execution Monitor) ---
     def setup_canvas_events(self):
         return
 
@@ -233,6 +277,11 @@ class ExecutionPage(tk.Frame):
             self.signature_points = (data or {}).get("points_px") or []
             self.paper_width = (data or {}).get("paper_width") or 0
             self.paper_height = (data or {}).get("paper_height") or 0
+
+        # Default values here use pixel size to keep the original source dimensions
+        default_w, default_h = self._a4_px_size()
+        self.paper_width = self._to_positive_float(self.paper_width, default_w)
+        self.paper_height = self._to_positive_float(self.paper_height, default_h)
 
         self.sign_command_sent = False
         self.running_signing = False
