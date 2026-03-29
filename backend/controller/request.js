@@ -746,6 +746,68 @@ const getHistoryByProfessor = async (req, res) => {
     }
 };
 
+const getHistoryByRequester = async (req, res) => {
+    try {
+        const { clientId } = req.params;
+        const db = await open({ filename: "./database/remote.db", driver: sqlite3.Database });
+        if (!canAccessUserScopedResource(req, clientId)) {
+            await logForbiddenRequestAccess(req, {
+                db,
+                targetType: 'USER',
+                targetId: String(clientId),
+                details: `Forbidden history access for requester ${clientId}`,
+            });
+            await db.close();
+            return res.status(403).json({ error: "Forbidden" });
+        }
+
+        const rawLimit = Number(req.query.limit);
+        const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(Math.floor(rawLimit), 200) : 100;
+
+        const rows = await db.all(
+            `
+            SELECT
+                r.requestId,
+                r.requestNumber,
+                r.requestSubject,
+                r.requestMessage,
+                r.requestDate,
+                r.requestStatus,
+                r.requestRTSP,
+                r.requestPicture,
+                r.rejectReason,
+                r.signatureCoordinates,
+                r.ownerRequestID,
+                r.clientRequestID,
+                r.claimedBy,
+                r.stateVersion,
+                r.createdAt,
+                r.updatedAt,
+                r.claimedAt,
+                r.startedAt,
+                r.completedAt,
+                u.userName as studentName,
+                u.userLastname as studentLastName,
+                p.userName as ownerName,
+                p.userLastname as ownerLastName
+            FROM requestSign r
+            LEFT JOIN users u ON r.clientRequestID = u.userId
+            LEFT JOIN users p ON r.ownerRequestID = p.userId
+            WHERE r.clientRequestID = ?
+            ORDER BY r.requestId DESC
+            LIMIT ?
+            `,
+            [clientId, limit]
+        );
+        await db.close();
+
+        res.json(rows || []);
+    } catch (error) {
+        console.error("Error in getHistoryByRequester:", error);
+        res.status(500).json({ error: "DB Error" });
+    }
+};
+
 const claimNextCncTask = async (req, res) => {
     let db;
     try {
@@ -914,6 +976,7 @@ export default {
     transitionRequest,
     claimNextRequest,
     getHistoryByProfessor,
+    getHistoryByRequester,
     claimNextCncTask,
     reportCncTaskResult
 };
