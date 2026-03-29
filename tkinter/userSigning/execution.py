@@ -3,9 +3,11 @@ from tkinter import messagebox
 import requests
 import json
 import os
+import cv2
 from datetime import datetime
 from dotenv import load_dotenv
 import time
+from PIL import Image, ImageTk
 from websocket import create_connection
 from userSigning.reject_reason import prompt_reject_reason
 from app_config import (
@@ -20,7 +22,7 @@ from app_config import (
 
 class ExecutionPage(tk.Frame):
     A4_WIDTH_MM = 210
-    A4_HEIGHT_MM = 297
+    A4_HEIGHT_MM = 290
     A4_DPI = 300
 
     def __init__(self, parent, controller):
@@ -35,6 +37,10 @@ class ExecutionPage(tk.Frame):
         self.running_signing = False
         self._signing_progress_value = 0
         self._start_locked_for_request = False
+        self.camera_cap = None
+        self.camera_running = False
+        self.camera_after_id = None
+        self.camera_image_tk = None
 
         self.setup_ui()
         self.setup_canvas_events()
@@ -250,20 +256,100 @@ class ExecutionPage(tk.Frame):
 
     # --- Camera System (Execution Monitor) ---
     def setup_canvas_events(self):
-        return
+        self.bind("<Destroy>", self._on_destroy)
+
+    def _on_destroy(self, event):
+        if event.widget is self:
+            self._stop_camera_stream(show_placeholder=False)
+
+    def _get_rtsp_url(self):
+        rtsp = self.current_request.get("requestRTSP") if self.current_request else None
+        rtsp = str(rtsp or "").strip()
+        if not rtsp or rtsp.lower() == "none":
+            return None
+        return rtsp
+
+    def _start_camera_stream(self, rtsp_url):
+        self._stop_camera_stream(show_placeholder=False)
+        self.show_camera_placeholder(f"กำลังเชื่อมต่อกล้อง: {rtsp_url}")
+
+        try:
+            self.camera_cap = cv2.VideoCapture(rtsp_url)
+            self.camera_cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        except Exception:
+            self.camera_cap = None
+
+        if self.camera_cap is None or not self.camera_cap.isOpened():
+            self._stop_camera_stream(show_placeholder=False)
+            self.show_camera_placeholder("เชื่อมต่อ RTSP ไม่สำเร็จ")
+            return
+
+        self.camera_running = True
+        self._update_camera_frame()
+
+    def _stop_camera_stream(self, show_placeholder=True):
+        self.camera_running = False
+
+        if self.camera_after_id:
+            try:
+                self.after_cancel(self.camera_after_id)
+            except Exception:
+                pass
+            self.camera_after_id = None
+
+        if self.camera_cap is not None:
+            try:
+                self.camera_cap.release()
+            except Exception:
+                pass
+            self.camera_cap = None
+
+        self.camera_image_tk = None
+        if show_placeholder and hasattr(self, "camera_view"):
+            self.show_camera_placeholder("รอเริ่มงานลงนาม")
+
+    def _update_camera_frame(self):
+        if not self.camera_running or self.camera_cap is None:
+            return
+
+        ret, frame = self.camera_cap.read()
+        if ret and frame is not None:
+            try:
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                canvas_w = max(int(self.camera_view.winfo_width()), 1)
+                canvas_h = max(int(self.camera_view.winfo_height()), 1)
+
+                image = Image.fromarray(frame_rgb)
+                image = image.resize((canvas_w, canvas_h), Image.LANCZOS)
+                self.camera_image_tk = ImageTk.PhotoImage(image)
+
+                self.camera_view.delete("all")
+                self.camera_view.create_image(canvas_w // 2, canvas_h // 2, image=self.camera_image_tk)
+            except Exception:
+                self.show_camera_placeholder("สตรีมกล้องมีปัญหา - กำลังลองใหม่")
+        else:
+            self.show_camera_placeholder("อ่านภาพจากกล้องไม่สำเร็จ - กำลังลองใหม่")
+
+        self.camera_after_id = self.after(33, self._update_camera_frame)
 
     def show_camera_placeholder(self, text):
         self.camera_view.delete("all")
-        self.camera_view.create_text(200, 200, text="CNC LIVE MONITOR", 
+        canvas_w = max(int(self.camera_view.winfo_width()), 1)
+        canvas_h = max(int(self.camera_view.winfo_height()), 1)
+        center_x = canvas_w // 2
+        center_y = canvas_h // 2
+
+        self.camera_view.create_text(center_x, max(center_y - 20, 20), text="CNC LIVE MONITOR", 
             font=("Arial", 16, "bold"), fill="#94A3B8")
-        self.camera_view.create_text(200, 240, text=text, 
+        self.camera_view.create_text(center_x, min(center_y + 20, canvas_h - 20), text=text, 
             font=("Arial", 11), fill="#E2E8F0")
 
     def refresh_camera_view(self):
-        rtsp = self.current_request.get("requestRTSP") if self.current_request else None
-        if rtsp and rtsp != "none":
-            self.show_camera_placeholder(f"กำลังเฝ้าภาพจาก: {rtsp}")
+        rtsp = self._get_rtsp_url()
+        if rtsp:
+            self._start_camera_stream(rtsp)
         else:
+            self._stop_camera_stream(show_placeholder=False)
             self.show_camera_placeholder("ไม่พบ RTSP - แสดงหน้าจอเฝ้าดูสถานะแทน")
 
     def set_request_data(self, data):
@@ -381,6 +467,7 @@ class ExecutionPage(tk.Frame):
                 self.sign_command_sent = False
                 self.running_signing = False
                 self._signing_progress_value = 0
+                self._stop_camera_stream(show_placeholder=True)
             
     def cancel_action(self):
         if not messagebox.askyesno("ยืนยัน", "ยกเลิกงานนี้และปฏิเสธคำร้องใช่หรือไม่?", parent=self.winfo_toplevel()):
@@ -404,6 +491,7 @@ class ExecutionPage(tk.Frame):
                 return
 
         self.set_machine_status("halted")
+        self._stop_camera_stream(show_placeholder=False)
         self.show_camera_placeholder("หยุดฉุกเฉินแล้ว - โปรดตรวจสอบเครื่อง CNC")
         self.running_signing = False
         self.sign_command_sent = False
