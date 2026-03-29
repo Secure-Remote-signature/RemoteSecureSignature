@@ -2,6 +2,7 @@ import { open } from "sqlite";
 import sqlite3 from "sqlite3";
 import { getClientIp, writeActivityLog } from "../lib/activityLog.js";
 import { fetchMachineStatus } from "../lib/machineGateway.js";
+import { getMachineStatusSnapshot } from "../lib/machineStatusHook.js";
 
 const sqlite3Verbose = sqlite3.verbose();
 
@@ -61,6 +62,20 @@ function mapSystemSettings(rows) {
     sessionTimeoutMinutes: Number(values.sessionTimeoutMinutes || 0),
     maxLoginAttempts: Number(values.maxLoginAttempts || 0),
   };
+}
+
+function mapGatewayStatusToAdminStatus(rawStatus) {
+  const normalized = String(rawStatus || "").toLowerCase();
+  if (["busy", "running", "printing", "signing", "working", "drawing", "executing", "homing"].includes(normalized)) {
+    return "BUSY";
+  }
+  if (["offline", "disconnected"].includes(normalized)) {
+    return "OFFLINE";
+  }
+  if (["error", "failed", "fault", "halted", "emergency_stop"].includes(normalized)) {
+    return "ERROR";
+  }
+  return "ONLINE";
 }
 
 const getDashboardSummary = async (_req, res) => {
@@ -253,16 +268,25 @@ const getCncOverview = async (req, res) => {
 
     const devices = await Promise.all(
       Array.from(byDevice.values()).map(async (device) => {
-        const statusResult = await fetchMachineStatus(device.id);
+        const liveSnapshot = getMachineStatusSnapshot(device.id);
 
         let machineStatus = "OFFLINE";
-        if (statusResult.ok && statusResult.source !== "not-configured") {
-          const normalized = String(statusResult.status || "").toLowerCase();
-          if (["busy", "running", "printing", "signing", "working"].includes(normalized)) {
-            machineStatus = "BUSY";
-          } else {
-            machineStatus = "ONLINE";
+        let statusSource = "unknown";
+        let machineStatusRaw = "unknown";
+        let statusUpdatedAt = null;
+
+        if (liveSnapshot) {
+          machineStatus = liveSnapshot.adminStatus || "OFFLINE";
+          statusSource = liveSnapshot.source || "mqtt";
+          machineStatusRaw = liveSnapshot.rawState || "unknown";
+          statusUpdatedAt = liveSnapshot.updatedAt || null;
+        } else {
+          const statusResult = await fetchMachineStatus(device.id);
+          if (statusResult.ok && statusResult.source !== "not-configured") {
+            machineStatus = mapGatewayStatusToAdminStatus(statusResult.status);
           }
+          statusSource = statusResult.source || "unknown";
+          machineStatusRaw = statusResult.status || "unknown";
         }
 
         if (machineStatus === "ONLINE" && device.currentJob) {
@@ -277,8 +301,9 @@ const getCncOverview = async (req, res) => {
           currentJob: device.currentJob,
           queueCount: device.queue.length,
           queue: device.queue,
-          statusSource: statusResult.source || "unknown",
-          machineStatusRaw: statusResult.status || "unknown",
+          statusSource,
+          machineStatusRaw,
+          statusUpdatedAt,
         };
       }),
     );
