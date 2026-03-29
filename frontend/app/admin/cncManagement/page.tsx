@@ -89,7 +89,7 @@ export default function CNCManagementPage() {
 
   useEffect(() => {
     const unsubscribe = subscribeRealtime((event) => {
-      if (event.type === "request.created" || event.type === "request.statusChanged") {
+      if (event.type === "request.created" || event.type === "request.statusChanged" || event.type === "machine.status") {
         void fetchCncOverview(false);
       }
 
@@ -170,6 +170,7 @@ export default function CNCManagementPage() {
     switch (status) {
       case "ONLINE": return "bg-emerald-100 text-emerald-700 border-emerald-200";
       case "BUSY": return "bg-amber-100 text-amber-700 border-amber-200";
+      case "ERROR": return "bg-rose-100 text-rose-700 border-rose-200";
       case "OFFLINE": return "bg-rose-100 text-rose-700 border-rose-200";
       default: return "bg-gray-100 text-gray-700 border-gray-200";
     }
