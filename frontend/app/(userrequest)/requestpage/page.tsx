@@ -265,6 +265,7 @@ export default function RequestDocumentPage() {
                                         value={selectedProfId} 
                                         onChange={(e) => setSelectedProfId(e.target.value)}
                                         className={inputStyle}
+                                        required
                                     >
                                         <option value="">--- กรุณาเลือกอาจารย์/เจ้าหน้าที่ ---</option>
                                         {filteredRecipients.map(p => (
@@ -291,8 +292,8 @@ export default function RequestDocumentPage() {
                                     )}
                                 </div>
 
-                                <input type="text" placeholder="หัวข้อเรื่อง (เช่น ขออนุมัติโครงการ...)" className={inputStyle} onChange={(e) => setFormData({...formData, subject: e.target.value})} />
-                                <textarea placeholder="รายละเอียดเพิ่มเติม..." className={`${inputStyle} h-32 resize-none`} onChange={(e) => setFormData({...formData, details: e.target.value})} />
+                                <input type="text" placeholder="หัวข้อเรื่อง (เช่น ขออนุมัติโครงการ...)" className={inputStyle} onChange={(e) => setFormData({...formData, subject: e.target.value})} required />
+                                <textarea placeholder="รายละเอียดเพิ่มเติม..." className={`${inputStyle} h-32 resize-none`} onChange={(e) => setFormData({...formData, details: e.target.value})} required />
                                 
                                 <button type="button" onClick={() => setStep(2)} className="w-full bg-[#4F46E5] text-white font-bold py-4 rounded-2xl shadow-lg flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all active:scale-95">
                                     ถัดไป: จัดการไฟล์เอกสาร <ChevronRight size={20} />
