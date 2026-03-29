@@ -3,12 +3,36 @@ import sqlite3 from "sqlite3";
 import { getClientIp, writeActivityLog } from "../lib/activityLog.js";
 import { fetchMachineStatus, sendMachineCommand } from "../lib/machineGateway.js";
 import { broadcastRealtimeEvent } from "../lib/realtime.js";
+import { getMachineStatusSnapshot } from "../lib/machineStatusHook.js";
 
 const sqlite3Verbose = sqlite3.verbose();
+
+function mapRawStatusToDashboardStatus(rawStatus) {
+  const normalized = String(rawStatus || "").trim().toLowerCase();
+  if (["busy", "running", "printing", "signing", "working", "drawing", "executing", "homing"].includes(normalized)) {
+    return "working";
+  }
+  if (["offline", "disconnected"].includes(normalized)) {
+    return "offline";
+  }
+  return "idle";
+}
 
 const getMachineStatus = async (req, res) => {
   try {
     const deviceId = String(req.query?.deviceId || "").trim();
+
+    const mqttSnapshot = getMachineStatusSnapshot(deviceId);
+    if (mqttSnapshot) {
+      return res.status(200).json({
+        status: mqttSnapshot.dashboardStatus,
+        machineState: mqttSnapshot.rawState,
+        source: mqttSnapshot.source,
+        updatedAt: mqttSnapshot.updatedAt,
+        data: mqttSnapshot.payload || null,
+      });
+    }
+
     const result = await fetchMachineStatus(deviceId);
 
     if (!result.ok) {
@@ -19,7 +43,8 @@ const getMachineStatus = async (req, res) => {
     }
 
     return res.status(200).json({
-      status: result.status || "idle",
+      status: mapRawStatusToDashboardStatus(result.status),
+      machineState: result.status || "unknown",
       source: result.source,
       message: result.message,
       data: result.payload || null,
