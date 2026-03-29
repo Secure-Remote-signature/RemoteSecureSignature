@@ -147,7 +147,8 @@ export default function AdminDashboardPage() {
       if (
         event.type === "request.created" ||
         event.type === "request.statusChanged" ||
-        event.type === "audit-log.created"
+        event.type === "audit-log.created" ||
+        event.type === "machine.status"
       ) {
         void fetchDashboard(false);
       }
@@ -165,6 +166,7 @@ export default function AdminDashboardPage() {
       case "PROCESSING":
         return { color: "text-amber-700", bg: "bg-amber-50", border: "border-amber-200", dot: "bg-amber-500", ping: "bg-amber-400" };
       case "OFFLINE":
+      case "ERROR":
       case "FAILED":
         return { color: "text-rose-700", bg: "bg-rose-50", border: "border-rose-200", dot: "bg-rose-500", ping: null };
       default:
