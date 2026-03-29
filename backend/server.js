@@ -11,6 +11,7 @@ import requestService from "./router/request.js";
 import machineService from "./router/machine.js";
 import adminService from "./router/admin.js";
 import { initializeRealtimeServer } from "./lib/realtime.js";
+import { startMachineStatusHook } from "./lib/machineStatusHook.js";
 
 // Setup __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -53,6 +54,7 @@ async function startApp() {
 
         const server = http.createServer(app);
         initializeRealtimeServer(server);
+        startMachineStatusHook();
 
         server.listen(port, () => {
             console.log(`Secure Remote Signature Backend running on port ${port}`);
