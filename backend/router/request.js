@@ -13,6 +13,7 @@ router.get("/state/:id", requireAuth, requestController.getRequestState);
 router.put("/transition/:id", requireAuth, requestController.transitionRequest);
 router.post("/claim-next", requireAuth, requestController.claimNextRequest);
 router.get("/history/:profId", requireAuth, requestController.getHistoryByProfessor);
+router.get("/history-created/:clientId", requireAuth, requestController.getHistoryByRequester);
 router.post("/cnc/claim-next", requestController.claimNextCncTask);
 router.post("/cnc/report-result", requestController.reportCncTaskResult);
 
