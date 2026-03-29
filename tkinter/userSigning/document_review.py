@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import messagebox
 from io import BytesIO
 import json
+import ast
 
 import requests
 from PIL import Image, ImageTk, ImageOps
@@ -11,6 +12,10 @@ from userSigning.reject_reason import prompt_reject_reason
 
 
 class DocumentReviewPage(tk.Frame):
+    A4_WIDTH_MM = 210
+    A4_HEIGHT_MM = 290
+    A4_DPI = 300
+
     def __init__(self, parent, controller):
         super().__init__(parent, bg="#F9FAFB")
         self.controller = controller
@@ -22,6 +27,85 @@ class DocumentReviewPage(tk.Frame):
         self.signature_area = None
 
         self.setup_ui()
+
+    def get_a4_px_size(self):
+        width_px = round(self.A4_WIDTH_MM * self.A4_DPI / 25.4)
+        height_px = round(self.A4_HEIGHT_MM * self.A4_DPI / 25.4)
+        return width_px, height_px
+
+    def normalize_image_to_a4(self, source_img):
+        a4_w, a4_h = self.get_a4_px_size()
+        img = ImageOps.exif_transpose(source_img).convert("RGB")
+        src_w, src_h = img.size
+
+        resized = img.resize((a4_w, a4_h), Image.Resampling.LANCZOS)
+        scale_x = a4_w / max(1, src_w)
+        scale_y = a4_h / max(1, src_h)
+
+        transform = {
+            "scale_x": scale_x,
+            "scale_y": scale_y,
+            "a4_width": a4_w,
+            "a4_height": a4_h,
+        }
+        return resized, transform
+
+    def map_signature_area_to_normalized_doc(self, signature_area, transform):
+        if not signature_area:
+            return None
+
+        try:
+            x = float(signature_area.get("x", 0))
+            y = float(signature_area.get("y", 0))
+            width = float(signature_area.get("width", 0))
+            height = float(signature_area.get("height", 0))
+        except (TypeError, ValueError, AttributeError):
+            return None
+
+        if width <= 0 or height <= 0:
+            return None
+
+        scale_x = transform["scale_x"]
+        scale_y = transform["scale_y"]
+        mapped = {
+            "x": max(0, int(round(x * scale_x))),
+            "y": max(0, int(round(y * scale_y))),
+            "width": max(1, int(round(width * scale_x))),
+            "height": max(1, int(round(height * scale_y))),
+        }
+
+        max_w = transform["a4_width"]
+        max_h = transform["a4_height"]
+        mapped["x"] = min(mapped["x"], max_w - 1)
+        mapped["y"] = min(mapped["y"], max_h - 1)
+        mapped["width"] = min(mapped["width"], max_w - mapped["x"])
+        mapped["height"] = min(mapped["height"], max_h - mapped["y"])
+        return mapped
+
+    def parse_signature_area(self, raw_area):
+        if isinstance(raw_area, dict):
+            return raw_area
+        if not isinstance(raw_area, str):
+            return None
+
+        text = raw_area.strip()
+        if not text:
+            return None
+
+        try:
+            parsed = json.loads(text)
+            if isinstance(parsed, dict):
+                return parsed
+        except json.JSONDecodeError:
+            pass
+
+        try:
+            parsed = ast.literal_eval(text)
+            if isinstance(parsed, dict):
+                return parsed
+        except Exception:
+            pass
+        return None
 
     def setup_ui(self):
         toolbar = tk.Frame(self, bg="#FFFFFF", height=60, bd=0, highlightthickness=1, highlightbackground="#E5E7EB")
@@ -101,17 +185,15 @@ class DocumentReviewPage(tk.Frame):
                 return
 
             raw_img = Image.open(BytesIO(response.content))
-            self.orig_img = ImageOps.exif_transpose(raw_img)
+            normalized_img, transform = self.normalize_image_to_a4(raw_img)
+            self.orig_img = normalized_img
+            a4_w, a4_h = self.get_a4_px_size()
+            if isinstance(self.current_request, dict):
+                self.current_request["paper_width"] = float(a4_w)
+                self.current_request["paper_height"] = float(a4_h)
 
-            raw_area = self.current_request.get("signatureArea")
-            if isinstance(raw_area, str):
-                try:
-                    raw_area = json.loads(raw_area)
-                except json.JSONDecodeError:
-                    raw_area = None
-
-            if isinstance(raw_area, dict):
-                self.signature_area = raw_area
+            raw_area = self.parse_signature_area(self.current_request.get("signatureArea"))
+            self.signature_area = self.map_signature_area_to_normalized_doc(raw_area, transform)
 
             self.update_base_fit_zoom()
             self.render_canvas()
