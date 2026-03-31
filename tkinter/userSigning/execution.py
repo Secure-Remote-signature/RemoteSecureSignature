@@ -70,6 +70,7 @@ class ExecutionPage(tk.Frame):
         self._start_mqtt_status_listener()
         self._start_backend_status_polling()
         self._schedule_status_queue_drain()
+        self.after(1000, self.refresh_camera_view)
 
     load_dotenv()
 
@@ -162,7 +163,6 @@ class ExecutionPage(tk.Frame):
             self._complete_signing_if_needed()
             return
 
-        # Some CNC runtimes return directly to IDLE/READY after drawing.
         if status in {"idle", "ready"} and self.sign_command_sent and self._seen_active_state_for_job:
             self._complete_signing_if_needed()
             return
@@ -200,7 +200,6 @@ class ExecutionPage(tk.Frame):
         source_w = self._to_positive_float(self.paper_width, a4_px_w)
         source_h = self._to_positive_float(self.paper_height, a4_px_h)
 
-        # Guard against malformed payload sizes causing huge coordinate offsets.
         if source_w < (a4_px_w * 0.6) or source_w > (a4_px_w * 1.4):
             source_w = a4_px_w
         if source_h < (a4_px_h * 0.6) or source_h > (a4_px_h * 1.4):
@@ -590,7 +589,7 @@ class ExecutionPage(tk.Frame):
             self._stop_camera_stream(show_placeholder=False)
 
     def _get_rtsp_url(self):
-        rtsp = self.current_request.get("requestRTSP") if self.current_request else None
+        rtsp = os.getenv("RTSP_CAMERA_URL", "rtsp://192.168.1.104:8554/srs/stream")
         rtsp = str(rtsp or "").strip()
         if not rtsp or rtsp.lower() == "none":
             return None
