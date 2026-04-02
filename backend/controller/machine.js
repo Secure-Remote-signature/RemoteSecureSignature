@@ -58,7 +58,7 @@ const controlMachine = async (req, res) => {
   try {
     const { deviceId, action } = req.body || {};
     const normalizedAction = String(action || "").toUpperCase();
-    const allowed = new Set(["E_STOP", "TEST_PEN", "HOME"]);
+    const allowed = new Set(["E_STOP", "UPDOWN", "HOME"]);
 
     if (!deviceId || !normalizedAction) {
       return res.status(400).json({ error: "deviceId and action are required" });
