@@ -4,7 +4,8 @@ import requests
 from PIL import Image, ImageTk, ImageDraw, ImageOps
 from io import BytesIO
 import json
-from app_config import API_BASE_URL, build_auth_headers
+from app_config import API_BASE_URL, build_api_url, build_auth_headers
+from userSigning.reject_reason import prompt_reject_reason
 
 class SignaturePage(tk.Frame):
     def __init__(self, parent, controller):
@@ -53,6 +54,17 @@ class SignaturePage(tk.Frame):
         # Confirm/Simulate Button
         tk.Button(toolbar, text="PREVIEW + CONFIRM", font=("Arial", 10, "bold"), bg="#10B981", fg="#FFFFFF", 
             relief="flat", padx=20, command=self.show_simulation).pack(side="right", padx=15)
+
+        tk.Button(
+            toolbar,
+            text="ปฏิเสธการลงนาม",
+            font=("Arial", 10, "bold"),
+            bg="#E11D48",
+            fg="#FFFFFF",
+            relief="flat",
+            padx=15,
+            command=self.reject_request,
+        ).pack(side="right", padx=5)
 
         # --- Main Split Screen (Using PanedWindow) ---
         self.paned_window = tk.PanedWindow(self, orient=tk.HORIZONTAL, bg="#E5E7EB", sashwidth=6)
@@ -302,3 +314,37 @@ class SignaturePage(tk.Frame):
             "paper_height": paper_height
         }
         self.controller.show_frame("PinConfirmPage", data=payload)
+
+    def reject_request(self):
+        if not self.current_request:
+            messagebox.showwarning("Warning", "ไม่พบข้อมูลงานลงนาม")
+            return
+
+        if not messagebox.askyesno("ยืนยัน", "คุณต้องการปฏิเสธการลงนามใช่หรือไม่?"):
+            return
+
+        reason = prompt_reject_reason(self.winfo_toplevel())
+        if reason is None:
+            return
+
+        req_id = self.current_request.get("requestId")
+        if not req_id:
+            messagebox.showerror("Error", "ไม่พบ requestId")
+            return
+
+        try:
+            res = requests.put(
+                build_api_url(f"/srs/request/update-status/{req_id}"),
+                json={"status": "Rejected", "rejectReason": reason},
+                timeout=5,
+                headers=build_auth_headers(self.controller),
+            )
+            if res.status_code == 200:
+                if hasattr(self.controller, "end_signing_flow_lock"):
+                    self.controller.end_signing_flow_lock()
+                messagebox.showinfo("สำเร็จ", "ปฏิเสธการลงนามแล้ว")
+                self.controller.show_frame("DashboardPage")
+            else:
+                messagebox.showerror("Error", f"ปฏิเสธไม่สำเร็จ (HTTP {res.status_code})")
+        except Exception as exc:
+            messagebox.showerror("Error", f"เชื่อมต่อ backend ไม่สำเร็จ: {exc}")
