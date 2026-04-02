@@ -307,7 +307,7 @@ export default function RequestDocumentPage() {
                             <div className="flex-1 flex flex-col items-center justify-center text-white p-6 gap-6">
                                 <div className="text-center max-w-sm">
                                     <h2 className="text-2xl font-bold mb-2">นำเข้าเอกสาร</h2>
-                                    <p className="text-gray-400">อัปโหลดไฟล์ หรือสั่งถ่ายรูปจากเครื่อง CNC</p>
+                                    <p className="text-gray-400">กรุณาอัปโหลดไฟล์</p>
                                 </div>
                                 <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md">
                                     <label className="flex-1 cursor-pointer bg-white text-slate-900 font-bold p-6 rounded-[25px] flex flex-col items-center gap-3">
@@ -315,10 +315,10 @@ export default function RequestDocumentPage() {
                                         <span>อัปโหลดไฟล์</span>
                                         <input type="file" className="hidden" accept="image/*" onChange={handleFileUpload} />
                                     </label>
-                                    <button onClick={handleCaptureFromCNC} className="flex-1 bg-indigo-600 text-white font-bold p-6 rounded-[25px] flex flex-col items-center gap-3">
+                                    {/* <button onClick={handleCaptureFromCNC} className="flex-1 bg-indigo-600 text-white font-bold p-6 rounded-[25px] flex flex-col items-center gap-3">
                                         {isFetchingCamera ? <Loader2 className="animate-spin" size={32} /> : <Camera size={32} />}
                                         <span>สั่ง CNC ถ่ายรูป</span>
-                                    </button>
+                                    </button> */}
                                 </div>
                                 <button onClick={() => setStep(1)} className="text-gray-400 underline">ย้อนกลับไปแก้ไขข้อมูล</button>
                             </div>
