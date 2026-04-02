@@ -3,13 +3,13 @@ from tkinter import messagebox
 import requests
 import json
 import os
-import cv2
+import sys
+import vlc
 import importlib
 import queue
 from datetime import datetime
 from dotenv import load_dotenv
 import time
-from PIL import Image, ImageTk
 from userSigning.reject_reason import prompt_reject_reason
 from app_config import (
     build_api_url,
@@ -18,6 +18,7 @@ from app_config import (
     CNC_MQTT_BROKER_PORT,
     CNC_MQTT_TOPIC_PAYLOAD,
     CNC_MQTT_TOPIC_STATUS,
+    CNC_MQTT_TOPIC_EMRG,
     CNC_MQTT_USERNAME,
     CNC_MQTT_PASSWORD,
     CNC_MQTT_CLIENT_ID,
@@ -55,10 +56,10 @@ class ExecutionPage(tk.Frame):
         self._completion_handled = False
         self._seen_active_state_for_job = False
         self._start_locked_for_request = False
-        self.camera_cap = None
+
         self.camera_running = False
-        self.camera_after_id = None
-        self.camera_image_tk = None
+        self.vlc_instance = None
+        self.vlc_player = None
 
         self._status_queue = queue.Queue()
         self._status_mqtt_client = None
@@ -162,7 +163,6 @@ class ExecutionPage(tk.Frame):
             self._complete_signing_if_needed()
             return
 
-        # Some CNC runtimes return directly to IDLE/READY after drawing.
         if status in {"idle", "ready"} and self.sign_command_sent and self._seen_active_state_for_job:
             self._complete_signing_if_needed()
             return
@@ -192,19 +192,16 @@ class ExecutionPage(tk.Frame):
             pass
         return float(fallback)
 
-    # Normalize all signature paths into canonical A4 pixel-space.
     def _normalize_points_to_a4(self):
         target_w, target_h = self._a4_px_size()
-
         a4_px_w, a4_px_h = self._a4_px_size()
         source_w = self._to_positive_float(self.paper_width, a4_px_w)
         source_h = self._to_positive_float(self.paper_height, a4_px_h)
 
-        # Guard against malformed payload sizes causing huge coordinate offsets.
-        if source_w < (a4_px_w * 0.6) or source_w > (a4_px_w * 1.4):
-            source_w = a4_px_w
-        if source_h < (a4_px_h * 0.6) or source_h > (a4_px_h * 1.4):
-            source_h = a4_px_h
+        # if source_w < (a4_px_w * 0.6) or source_w > (a4_px_w * 1.4):
+        #     source_w = a4_px_w
+        # if source_h < (a4_px_h * 0.6) or source_h > (a4_px_h * 1.4):
+        #     source_h = a4_px_h
 
         scale_x = target_w / source_w
         scale_y = target_h / source_h
@@ -239,7 +236,6 @@ class ExecutionPage(tk.Frame):
 
     def _build_signature_task_payload(self, request_id):
         normalized_points, source_w, source_h, width_px, height_px = self._normalize_points_to_a4()
-
         width_mm = float(self.A4_WIDTH_MM)
         height_mm = float(self.A4_HEIGHT_MM)
         points_mm = []
@@ -378,6 +374,66 @@ class ExecutionPage(tk.Frame):
                         pass
 
         raise RuntimeError(f"ส่ง payload ไป CNC ผ่าน MQTT ไม่สำเร็จ: {last_error}")
+
+    def _send_emergency_stop_to_cnc_mqtt(self, request_id=None, reason=None):
+        try:
+            mqtt = importlib.import_module("paho.mqtt.client")
+        except Exception:
+            raise RuntimeError("ยังไม่ได้ติดตั้งแพ็กเกจ paho-mqtt (pip install paho-mqtt)")
+
+        if not CNC_MQTT_BROKER_HOST:
+            raise RuntimeError("ยังไม่ได้ตั้งค่า TK_CNC_MQTT_BROKER_HOST สำหรับเครื่อง CNC")
+
+        if not CNC_MQTT_TOPIC_EMRG:
+            raise RuntimeError("ยังไม่ได้ตั้งค่า TK_CNC_MQTT_TOPIC_EMRG สำหรับปุ่มยกเลิก")
+
+        emergency_payload = {
+            "command": "emergency_stop",
+            "requestId": request_id,
+            "reason": reason,
+            "source": "tkinter_cancel_button",
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+        }
+        payload_json = json.dumps(emergency_payload, ensure_ascii=False)
+
+        last_error = None
+        for attempt in range(1, CNC_MQTT_RETRY + 1):
+            client = None
+            try:
+                emergency_client_id = (f"{CNC_MQTT_CLIENT_ID}-emrg" if CNC_MQTT_CLIENT_ID else "")
+                client = mqtt.Client(client_id=emergency_client_id)
+                if CNC_MQTT_USERNAME:
+                    client.username_pw_set(CNC_MQTT_USERNAME, CNC_MQTT_PASSWORD or None)
+
+                client.connect(CNC_MQTT_BROKER_HOST, CNC_MQTT_BROKER_PORT, keepalive=CNC_MQTT_KEEPALIVE_SEC)
+                client.loop_start()
+
+                info = client.publish(CNC_MQTT_TOPIC_EMRG, payload=payload_json, qos=CNC_MQTT_QOS, retain=False)
+                if info.rc != mqtt.MQTT_ERR_SUCCESS:
+                    raise RuntimeError(f"publish failed (rc={info.rc})")
+
+                if CNC_MQTT_WAIT_FOR_PUBLISH:
+                    info.wait_for_publish(timeout=CNC_MQTT_PUBLISH_TIMEOUT_SEC)
+                    if not info.is_published():
+                        raise RuntimeError("publish timeout")
+
+                return
+            except Exception as exc:
+                last_error = exc
+                if attempt < CNC_MQTT_RETRY:
+                    time.sleep(0.5)
+            finally:
+                if client is not None:
+                    try:
+                        client.loop_stop()
+                    except Exception:
+                        pass
+                    try:
+                        client.disconnect()
+                    except Exception:
+                        pass
+
+        raise RuntimeError(f"ส่งคำสั่ง emergency stop ไป CNC ผ่าน MQTT ไม่สำเร็จ: {last_error}")
 
     def _extract_status_from_message(self, payload_text):
         text = str(payload_text or "").strip()
@@ -557,8 +613,12 @@ class ExecutionPage(tk.Frame):
         sig_frame = tk.LabelFrame(main_container, text=" กล้องเฝ้าหน้างาน CNC ", bg="#111827", fg="white")
         sig_frame.pack(fill="both", expand=True, padx=6, pady=(0, 6))
 
-        self.camera_view = tk.Canvas(sig_frame, bg="#000000", width=400, height=300)
+        # Changed from Canvas to Frame to hold the VLC Video Output
+        self.camera_view = tk.Frame(sig_frame, bg="#000000", width=400, height=300)
         self.camera_view.pack(fill="both", expand=True, pady=10, padx=10)
+        
+        # Label for showing placeholder text when no stream is active
+        self.placeholder_lbl = tk.Label(self.camera_view, bg="#000000", fg="#E2E8F0", font=("Arial", 11), justify="center")
         self.show_camera_placeholder("รอเริ่มงานลงนาม")
 
         tk.Button(sig_frame, text="REFRESH VIEW", bg="#64748B", fg="white", font=("Arial", 10), command=self.refresh_camera_view).pack(fill="x", padx=10, pady=(0, 6))
@@ -587,87 +647,78 @@ class ExecutionPage(tk.Frame):
                 self._status_poll_after_id = None
             self._stop_backend_status_polling()
             self._stop_mqtt_status_listener()
+            # Ensure VLC is stopped when widget is destroyed
             self._stop_camera_stream(show_placeholder=False)
 
     def _get_rtsp_url(self):
-        rtsp = self.current_request.get("requestRTSP") if self.current_request else None
+        rtsp = os.getenv("TK_EXEC_RTSP_URL")
         rtsp = str(rtsp or "").strip()
         if not rtsp or rtsp.lower() == "none":
             return None
+            
         return rtsp
 
     def _start_camera_stream(self, rtsp_url):
+        # Stop existing stream if any
         self._stop_camera_stream(show_placeholder=False)
-        self.show_camera_placeholder(f"กำลังเชื่อมต่อกล้อง: {rtsp_url}")
+        self.show_camera_placeholder(f"กำลังเชื่อมต่อกล้อง:\n{rtsp_url}")
+        
+        # Hide the placeholder label to let VLC render video
+        self.placeholder_lbl.place_forget()
 
         try:
-            self.camera_cap = cv2.VideoCapture(rtsp_url)
-            self.camera_cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        except Exception:
-            self.camera_cap = None
+            # Create a VLC Instance with network caching configuration to reduce latency
+            self.vlc_instance = vlc.Instance("--network-caching=300", "--drop-late-frames", "--skip-frames")
+            self.vlc_player = self.vlc_instance.media_player_new()
+            
+            # Load the RTSP media
+            media = self.vlc_instance.media_new(rtsp_url)
+            self.vlc_player.set_media(media)
 
-        if self.camera_cap is None or not self.camera_cap.isOpened():
+            # Get the window ID of the Tkinter Frame to attach the VLC player to it
+            window_id = self.camera_view.winfo_id()
+
+            # Attach player to the window depending on the operating system
+            if sys.platform.startswith('linux'):
+                # For Linux (Raspberry Pi), requires X11 windowing system (Not Wayland)
+                self.vlc_player.set_xwindow(window_id)
+            elif sys.platform == "win32":
+                # For Windows
+                self.vlc_player.set_hwnd(window_id)
+            elif sys.platform == "darwin":
+                # For macOS
+                self.vlc_player.set_nsobject(window_id)
+
+            # Start playback
+            self.vlc_player.play()
+            self.camera_running = True
+            
+        except Exception as e:
             self._stop_camera_stream(show_placeholder=False)
-            self.show_camera_placeholder("เชื่อมต่อ RTSP ไม่สำเร็จ")
-            return
-
-        self.camera_running = True
-        self._update_camera_frame()
+            self.show_camera_placeholder(f"เชื่อมต่อ RTSP ไม่สำเร็จ:\n{e}")
 
     def _stop_camera_stream(self, show_placeholder=True):
         self.camera_running = False
 
-        if self.camera_after_id:
+        # Stop and release VLC player
+        if self.vlc_player is not None:
             try:
-                self.after_cancel(self.camera_after_id)
+                self.vlc_player.stop()
             except Exception:
                 pass
-            self.camera_after_id = None
+            self.vlc_player = None
 
-        if self.camera_cap is not None:
-            try:
-                self.camera_cap.release()
-            except Exception:
-                pass
-            self.camera_cap = None
+        if self.vlc_instance is not None:
+            self.vlc_instance = None
 
-        self.camera_image_tk = None
         if show_placeholder and hasattr(self, "camera_view"):
             self.show_camera_placeholder("รอเริ่มงานลงนาม")
 
-    def _update_camera_frame(self):
-        if not self.camera_running or self.camera_cap is None:
-            return
-
-        ret, frame = self.camera_cap.read()
-        if ret and frame is not None:
-            try:
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                canvas_w = max(int(self.camera_view.winfo_width()), 1)
-                canvas_h = max(int(self.camera_view.winfo_height()), 1)
-
-                image = Image.fromarray(frame_rgb)
-                image = image.resize((canvas_w, canvas_h), Image.LANCZOS)
-                self.camera_image_tk = ImageTk.PhotoImage(image)
-
-                self.camera_view.delete("all")
-                self.camera_view.create_image(canvas_w // 2, canvas_h // 2, image=self.camera_image_tk)
-            except Exception:
-                self.show_camera_placeholder("สตรีมกล้องมีปัญหา - กำลังลองใหม่")
-        else:
-            self.show_camera_placeholder("อ่านภาพจากกล้องไม่สำเร็จ - กำลังลองใหม่")
-
-        self.camera_after_id = self.after(33, self._update_camera_frame)
-
     def show_camera_placeholder(self, text):
-        self.camera_view.delete("all")
-        canvas_w = max(int(self.camera_view.winfo_width()), 1)
-        canvas_h = max(int(self.camera_view.winfo_height()), 1)
-        center_x = canvas_w // 2
-        center_y = canvas_h // 2
-
-        self.camera_view.create_text(center_x, max(center_y - 20, 20), text="CNC LIVE MONITOR", font=("Arial", 16, "bold"), fill="#94A3B8")
-        self.camera_view.create_text(center_x, min(center_y + 20, canvas_h - 20), text=text, font=("Arial", 11), fill="#E2E8F0")
+        # Clear VLC context visually by forcing the placeholder label to show up
+        if hasattr(self, "placeholder_lbl"):
+            self.placeholder_lbl.config(text=f"CNC LIVE MONITOR\n\n{text}")
+            self.placeholder_lbl.place(relx=0.5, rely=0.5, anchor="center")
 
     def refresh_camera_view(self):
         rtsp = self._get_rtsp_url()
@@ -779,6 +830,13 @@ class ExecutionPage(tk.Frame):
             return
 
         req_id = self.current_request.get("requestId") if self.current_request else None
+        try:
+            self._send_emergency_stop_to_cnc_mqtt(request_id=req_id, reason=reason)
+            print(f"Execution Page: ส่ง emergency stop ไป CNC ผ่าน MQTT แล้ว (topic={CNC_MQTT_TOPIC_EMRG})")
+        except Exception as e:
+            messagebox.showerror("Error", f"ส่งคำสั่งหยุดฉุกเฉินไป CNC ไม่สำเร็จ: {e}", parent=self.winfo_toplevel())
+            return
+
         if req_id:
             try:
                 requests.put(
