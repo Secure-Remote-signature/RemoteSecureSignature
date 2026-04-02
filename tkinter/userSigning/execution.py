@@ -147,6 +147,9 @@ class ExecutionPage(tk.Frame):
         except Exception:
             pass
 
+        if hasattr(self.controller, "end_signing_flow_lock"):
+            self.controller.end_signing_flow_lock()
+
         messagebox.showinfo("Success", "CNC Signing Completed!", parent=self.winfo_toplevel())
         self._reset_execution_state()
 
@@ -389,14 +392,7 @@ class ExecutionPage(tk.Frame):
         if not CNC_MQTT_TOPIC_EMRG:
             raise RuntimeError("ยังไม่ได้ตั้งค่า TK_CNC_MQTT_TOPIC_EMRG สำหรับปุ่มยกเลิก")
 
-        emergency_payload = {
-            "command": "emergency_stop",
-            "requestId": request_id,
-            "reason": reason,
-            "source": "tkinter_cancel_button",
-            "timestamp": datetime.utcnow().isoformat() + "Z",
-        }
-        payload_json = json.dumps(emergency_payload, ensure_ascii=False)
+        payload_text = "no"
 
         last_error = None
         for attempt in range(1, CNC_MQTT_RETRY + 1):
@@ -410,7 +406,7 @@ class ExecutionPage(tk.Frame):
                 client.connect(CNC_MQTT_BROKER_HOST, CNC_MQTT_BROKER_PORT, keepalive=CNC_MQTT_KEEPALIVE_SEC)
                 client.loop_start()
 
-                info = client.publish(CNC_MQTT_TOPIC_EMRG, payload=payload_json, qos=CNC_MQTT_QOS, retain=False)
+                info = client.publish(CNC_MQTT_TOPIC_EMRG, payload=payload_text, qos=CNC_MQTT_QOS, retain=False)
                 if info.rc != mqtt.MQTT_ERR_SUCCESS:
                     raise RuntimeError(f"publish failed (rc={info.rc})")
 
@@ -653,7 +649,7 @@ class ExecutionPage(tk.Frame):
             self._stop_camera_stream(show_placeholder=False)
 
     def _get_rtsp_url(self):
-        rtsp = os.getenv("RTSP_CAMERA_URL", "rtsp://192.168.1.104:8554/srs/stream")
+        rtsp = os.getenv("TK_EXEC_RTSP_URL")
         rtsp = str(rtsp or "").strip()
         if not rtsp or rtsp.lower() == "none":
             return None
@@ -859,4 +855,6 @@ class ExecutionPage(tk.Frame):
         self._signing_progress_value = 0
         self._completion_handled = False
         self._seen_active_state_for_job = False
+        if hasattr(self.controller, "end_signing_flow_lock"):
+            self.controller.end_signing_flow_lock()
         self.controller.show_frame("DashboardPage")
