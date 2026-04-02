@@ -24,6 +24,7 @@ function mqttConfig() {
     password: firstDefined(["CNC_MQTT_PASSWORD", "MQTT_PASSWORD", "TK_CNC_MQTT_PASSWORD"], ""),
     clientId: firstDefined(["CNC_MQTT_CLIENT_ID", "TK_CNC_MQTT_CLIENT_ID"], "srs-backend-control"),
     topicEmrg: firstDefined(["CNC_MQTT_TOPIC_EMRG", "TK_CNC_MQTT_TOPIC_EMRG"], "srs/Emrg"),
+    topicUpdown: firstDefined(["CNC_MQTT_TOPIC_UPDOWN", "TK_CNC_MQTT_TOPIC_UPDOWN"], "srs/updown"),
     topicControl: firstDefined(["CNC_MQTT_TOPIC_CONTROL"], "srs/control"),
   };
 }
@@ -39,6 +40,14 @@ function mapActionToMqtt(action, payloadBase, cfg) {
       note: normalized === "E_STOP"
         ? "Emergency stop command published to MQTT"
         : "Home command published to MQTT (handled by CNC while IDLE)",
+    };
+  }
+
+  if (normalized === "UPDOWN") {
+    return {
+      topic: cfg.topicUpdown,
+      payload: "no",
+      note: "Up/Down command published to MQTT updown topic",
     };
   }
 
