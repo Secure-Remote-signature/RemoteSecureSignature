@@ -13,7 +13,7 @@ from userSigning.reject_reason import prompt_reject_reason
 
 class DocumentReviewPage(tk.Frame):
     A4_WIDTH_MM = 210
-    A4_HEIGHT_MM = 290
+    A4_HEIGHT_MM = 297
     A4_DPI = 300
 
     def __init__(self, parent, controller):
