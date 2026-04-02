@@ -22,6 +22,8 @@ class MainApp(tk.Tk):
         self.current_user = None
         self.user_role = None
         self.auth_token = None
+        self.signing_flow_locked = False
+        self.signing_flow_request_id = None
         
 
         self.title("Secure Remote Signature")
@@ -101,6 +103,13 @@ class MainApp(tk.Tk):
                 self.v_scrollbar.grid_remove()
 
     def logout(self):
+        if self.signing_flow_locked:
+            messagebox.showwarning(
+                "กำลังดำเนินการลงนาม",
+                "ยังออกจากระบบไม่ได้ ต้องเซ็นให้เสร็จหรือปฏิเสธการลงนามก่อน",
+            )
+            return
+
         if messagebox.askyesno("Logout", "คุณต้องการออกจากระบบใช่หรือไม่?"):
             self.current_user_id = None
             self.current_user = None
@@ -108,8 +117,44 @@ class MainApp(tk.Tk):
             self.auth_token = None
             self.show_frame("LoginPage")
 
+    def start_signing_flow_lock(self, request_data=None):
+        request_id = None
+        if isinstance(request_data, dict):
+            if isinstance(request_data.get("request"), dict):
+                request_id = request_data.get("request", {}).get("requestId")
+            if not request_id:
+                request_id = request_data.get("requestId")
+
+        self.signing_flow_locked = True
+        if request_id:
+            self.signing_flow_request_id = request_id
+
+    def end_signing_flow_lock(self):
+        self.signing_flow_locked = False
+        self.signing_flow_request_id = None
+
+    def _is_page_allowed_while_signing_locked(self, page_name):
+        allowed_pages = {
+            "DocumentReviewPage",
+            "SignaturePage",
+            "PinConfirmPage",
+            "ExecutionPage",
+            "ForgotPinPage",
+        }
+        return page_name in allowed_pages
+
     def show_frame(self, page_name, data=None):
         if page_name in self.frames:
+            if self.signing_flow_locked and not self._is_page_allowed_while_signing_locked(page_name):
+                messagebox.showwarning(
+                    "ยังออกจากขั้นตอนลงนามไม่ได้",
+                    "เพื่อป้องกันสถานะค้าง กรุณาเซ็นให้เสร็จหรือปฏิเสธการลงนามก่อน",
+                )
+                return
+
+            if page_name in {"DocumentReviewPage", "SignaturePage", "PinConfirmPage", "ExecutionPage"}:
+                self.start_signing_flow_lock(data)
+
             frame = self.frames[page_name]
             
             for fname in ["ExecutionPage"]:
