@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   FilePlus, CheckCircle, Loader2, ChevronRight, Camera, 
@@ -14,6 +14,10 @@ interface Professor {
     userId: string;
     userName: string;
     userLastname: string;
+    userEmail?: string;
+    userPhone?: string;
+    userRole?: string;
+    facultyName?: string;
 }
 
 export default function RequestDocumentPage() {
@@ -22,12 +26,12 @@ export default function RequestDocumentPage() {
     const [isLoading, setIsLoading] = useState(false);
     const [isSubmitted, setIsSubmitted] = useState(false);
     
-    // --- ข้อมูล User และรายชื่ออาจารย์ ---
     const [professors, setProfessors] = useState<Professor[]>([]);
     const [selectedProfId, setSelectedProfId] = useState("");
+    const [recipientSearch, setRecipientSearch] = useState("");
     const [currentUserId, setCurrentUserId] = useState("");
 
-    // --- ข้อมูลฟอร์ม ---
+    // --- ข้อมลฟอร์ม ---
     const [formData, setFormData] = useState({
         Name: "",
         LastName: "",
@@ -37,40 +41,101 @@ export default function RequestDocumentPage() {
         details: ""
     });
 
-    // --- ข้อมูลรูปภาพและ Crop ---
     const [image, setImage] = useState<string | null>(null);
     const [isFetchingCamera, setIsFetchingCamera] = useState(false);
     const [crop, setCrop] = useState({ x: 0, y: 0 });
     const [zoom, setZoom] = useState(1);
     const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
 
-    // 1. ดึงข้อมูล User และ รายชื่ออาจารย์ ทันทีที่โหลดหน้า
     useEffect(() => {
         const savedData = sessionStorage.getItem("user_session");
-        if (savedData) {
+        if (!savedData) {
+            sessionStorage.setItem("auth_notice", "กรุณาเข้าสู่ระบบก่อนส่งคำร้อง");
+            router.replace("/login");
+            return;
+        }
+
+        let userId = "";
+        try {
             const user = JSON.parse(savedData);
-            setCurrentUserId(user.id);
+            userId = String(user?.id ?? user?.userId ?? "");
+            if (!userId) {
+                throw new Error("invalid session");
+            }
+
+            const normalizedName = String(user?.name ?? user?.userName ?? "");
+            const normalizedLastName = String(user?.lastName ?? user?.userLastname ?? "");
+            const normalizedRole = String(user?.role ?? user?.userRole ?? "");
+
+            setCurrentUserId(userId);
             setFormData(prev => ({
                 ...prev,
-                Name: user.name,
-                LastName: user.lastName,
-                Id: user.id,
-                Role: user.role
+                Name: normalizedName,
+                LastName: normalizedLastName,
+                Id: userId,
+                Role: normalizedRole
             }));
+
+            if (!normalizedName && !normalizedLastName) {
+                void api
+                    .get(`${process.env.NEXT_PUBLIC_API_URL}/srs/user/profile/${userId}`)
+                    .then((res) => {
+                        const profile = res.data ?? {};
+                        setFormData((prev) => ({
+                            ...prev,
+                            Name: String(profile?.userName ?? ""),
+                            LastName: String(profile?.userLastname ?? ""),
+                            Id: userId,
+                            Role: String(profile?.userRole ?? prev.Role ?? ""),
+                        }));
+                    })
+                    .catch((error) => {
+                        console.error("โหลดข้อมูลผู้ส่งคำร้องไม่สำเร็จ", error);
+                    });
+            }
+        } catch {
+            sessionStorage.removeItem("token");
+            sessionStorage.removeItem("user_session");
+            sessionStorage.setItem("auth_notice", "Session ไม่ถูกต้อง กรุณาเข้าสู่ระบบใหม่");
+            router.replace("/login");
+            return;
         }
 
         const fetchProfessors = async () => {
             try {
-                const res = await api.get(`${process.env.NEXT_PUBLIC_API_URL}/srs/user/staff`);
+                const res = await api.get(`${process.env.NEXT_PUBLIC_API_URL}/srs/user/staff?clientId=${userId}`);
                 setProfessors(res.data);
             } catch (err) {
                 console.error("ดึงรายชื่ออาจารย์ไม่สำเร็จ", err);
             }
         };
         fetchProfessors();
-    }, []);
+    }, [router]);
 
-    // 2. ฟังก์ชันอัปโหลดรูป
+    const selectedRecipient = useMemo(
+        () => professors.find((p) => String(p.userId) === String(selectedProfId)) || null,
+        [professors, selectedProfId],
+    );
+
+    const filteredRecipients = useMemo(() => {
+        const keyword = recipientSearch.trim().toLowerCase();
+        if (!keyword) return professors;
+
+        return professors.filter((p) => {
+            const fullName = `${p.userName} ${p.userLastname}`.toLowerCase();
+            const role = String(p.userRole || "").toLowerCase();
+            const email = String(p.userEmail || "").toLowerCase();
+            const phone = String(p.userPhone || "").toLowerCase();
+
+            return (
+                fullName.includes(keyword) ||
+                role.includes(keyword) ||
+                email.includes(keyword) ||
+                phone.includes(keyword)
+            );
+        });
+    }, [professors, recipientSearch]);
+
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files.length > 0) {
             const reader = new FileReader();
@@ -79,7 +144,6 @@ export default function RequestDocumentPage() {
         }
     };
 
-    // 3. ฟังก์ชันสั่งถ่ายรูป (จำลอง)
     const handleCaptureFromCNC = () => {
         setIsFetchingCamera(true);
         setTimeout(() => {
@@ -92,9 +156,13 @@ export default function RequestDocumentPage() {
         setCroppedAreaPixels(croppedAreaPixels);
     }, []);
 
-    // 4. ส่งข้อมูลไป Backend
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!currentUserId) {
+            sessionStorage.setItem("auth_notice", "กรุณาเข้าสู่ระบบก่อนส่งคำร้อง");
+            router.replace('/login');
+            return;
+        }
         if (!selectedProfId) return alert("กรุณาเลือกอาจารย์ที่จะส่งคำร้อง");
         if (!image) return alert("กรุณาเลือกรูปภาพเอกสาร");
 
@@ -116,7 +184,6 @@ export default function RequestDocumentPage() {
         };
 
         try {
-            // ใช้ axios และดึง URL จาก .env
             const response = await api.post(`${process.env.NEXT_PUBLIC_API_URL}/srs/request/submit`, payload);
             
             if(response.status === 200) {
@@ -155,12 +222,10 @@ export default function RequestDocumentPage() {
                             
                             <form className="p-6 md:p-10 space-y-6">
                                 <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-                                    {/* หัวข้อ - ใช้ col-span-2 เพื่อให้อยู่บรรทัดบนสุดเต็มความกว้าง */}
                                     <p className="col-span-2 text-sm font-bold text-gray-600 mb-1">
                                         รายละเอียดผู้ส่งคำร้อง
                                     </p>
 
-                                    {/* ช่องกรอกชื่อ */}
                                     <div className="flex flex-col gap-1">
                                         <label className="text-[12px] font-semibold text-indigo-500 ml-2">ชื่อจริง</label>
                                         <input 
@@ -173,7 +238,6 @@ export default function RequestDocumentPage() {
                                         />
                                     </div>
 
-                                    {/* ช่องกรอกนามสกุล */}
                                     <div className="flex flex-col gap-1">
                                         <label className="text-[12px] font-semibold text-indigo-500 ml-2">นามสกุล</label>
                                             <input 
@@ -188,23 +252,48 @@ export default function RequestDocumentPage() {
                                     </div>
 
                                 </div>
-                                {/* --- เพิ่ม Dropdown เลือกอาจารย์ --- */}
                                 <div>
                                     <p className="text-sm font-bold text-Slate-gray mb-2">ส่งถึงอาจารย์/เจ้าหน้าที่:</p>
+                                    <input
+                                        type="text"
+                                        value={recipientSearch}
+                                        onChange={(e) => setRecipientSearch(e.target.value)}
+                                        placeholder="ค้นหาชื่อ ตำแหน่ง อีเมล หรือเบอร์โทร"
+                                        className={inputStyle}
+                                    />
                                     <select 
                                         value={selectedProfId} 
                                         onChange={(e) => setSelectedProfId(e.target.value)}
                                         className={inputStyle}
+                                        required
                                     >
-                                        <option value="">--- กรุณาเลือกอาจารย์ ---</option>
-                                        {professors.map(p => (
-                                            <option key={p.userId} value={p.userId}>{p.userName} {p.userLastname}</option>
+                                        <option value="">--- กรุณาเลือกอาจารย์/เจ้าหน้าที่ ---</option>
+                                        {filteredRecipients.map(p => (
+                                            <option key={p.userId} value={p.userId}>
+                                                {p.userName} {p.userLastname} ({p.userRole || "staff"})
+                                            </option>
                                         ))}
                                     </select>
+
+                                    {recipientSearch.trim() && filteredRecipients.length === 0 && (
+                                        <p className="mt-2 text-sm text-gray-500">ไม่พบรายชื่อที่ตรงกับคำค้นหา</p>
+                                    )}
+
+                                    {selectedRecipient && (
+                                        <div className="mt-3 rounded-xl border border-indigo-100 bg-indigo-50/60 p-3 text-sm text-gray-700">
+                                            <p className="font-semibold text-indigo-700">
+                                                ผู้รับคำร้อง: {selectedRecipient.userName} {selectedRecipient.userLastname}
+                                            </p>
+                                            <p>ตำแหน่ง: {selectedRecipient.userRole || "-"}</p>
+                                            <p>คณะ: {selectedRecipient.facultyName || "-"}</p>
+                                            <p>อีเมล: {selectedRecipient.userEmail || "-"}</p>
+                                            <p>เบอร์โทร: {selectedRecipient.userPhone || "-"}</p>
+                                        </div>
+                                    )}
                                 </div>
 
-                                <input type="text" placeholder="หัวข้อเรื่อง (เช่น ขออนุมัติโครงการ...)" className={inputStyle} onChange={(e) => setFormData({...formData, subject: e.target.value})} />
-                                <textarea placeholder="รายละเอียดเพิ่มเติม..." className={`${inputStyle} h-32 resize-none`} onChange={(e) => setFormData({...formData, details: e.target.value})} />
+                                <input type="text" placeholder="หัวข้อเรื่อง (เช่น ขออนุมัติโครงการ...)" className={inputStyle} onChange={(e) => setFormData({...formData, subject: e.target.value})} required />
+                                <textarea placeholder="รายละเอียดเพิ่มเติม..." className={`${inputStyle} h-32 resize-none`} onChange={(e) => setFormData({...formData, details: e.target.value})} required />
                                 
                                 <button type="button" onClick={() => setStep(2)} className="w-full bg-[#4F46E5] text-white font-bold py-4 rounded-2xl shadow-lg flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all active:scale-95">
                                     ถัดไป: จัดการไฟล์เอกสาร <ChevronRight size={20} />
@@ -213,13 +302,12 @@ export default function RequestDocumentPage() {
                         </div>
                     </div>
                 ) : (
-                    /* Step 2: เลือกรูป & Crop */
                     <div className="flex-1 flex flex-col bg-slate-900 relative">
                         {!image ? (
                             <div className="flex-1 flex flex-col items-center justify-center text-white p-6 gap-6">
                                 <div className="text-center max-w-sm">
                                     <h2 className="text-2xl font-bold mb-2">นำเข้าเอกสาร</h2>
-                                    <p className="text-gray-400">อัปโหลดไฟล์ หรือสั่งถ่ายรูปจากเครื่อง CNC</p>
+                                    <p className="text-gray-400">กรุณาอัปโหลดไฟล์</p>
                                 </div>
                                 <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md">
                                     <label className="flex-1 cursor-pointer bg-white text-slate-900 font-bold p-6 rounded-[25px] flex flex-col items-center gap-3">
@@ -227,10 +315,6 @@ export default function RequestDocumentPage() {
                                         <span>อัปโหลดไฟล์</span>
                                         <input type="file" className="hidden" accept="image/*" onChange={handleFileUpload} />
                                     </label>
-                                    <button onClick={handleCaptureFromCNC} className="flex-1 bg-indigo-600 text-white font-bold p-6 rounded-[25px] flex flex-col items-center gap-3">
-                                        {isFetchingCamera ? <Loader2 className="animate-spin" size={32} /> : <Camera size={32} />}
-                                        <span>สั่ง CNC ถ่ายรูป</span>
-                                    </button>
                                 </div>
                                 <button onClick={() => setStep(1)} className="text-gray-400 underline">ย้อนกลับไปแก้ไขข้อมูล</button>
                             </div>

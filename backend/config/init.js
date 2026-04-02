@@ -1,8 +1,14 @@
 import sqlite3 from "sqlite3";
 import { open } from "sqlite";
+import bcrypt from "bcryptjs";
 
 // Enable verbose mode for better error messages
 const sqlite3Verbose = sqlite3.verbose();
+const BCRYPT_ROUNDS = Number(process.env.BCRYPT_ROUNDS || 10);
+
+function isBcryptHash(value) {
+  return /^\$2[aby]\$\d{2}\$/.test(String(value || ""));
+}
 
 async function initializeDatabase() {
   try {
@@ -42,6 +48,48 @@ async function initializeDatabase() {
         FOREIGN KEY (userfacultyId) REFERENCES faculties(facultyId)
        );`
       );
+
+    // Lightweight migration for user online/offline status tracking.
+    const userColumns = await db.all("PRAGMA table_info(users)");
+    const hasUserStatus = userColumns.some((col) => col.name === "userStatus");
+    const hasLastLoginAt = userColumns.some((col) => col.name === "lastLoginAt");
+    const hasLastActiveAt = userColumns.some((col) => col.name === "lastActiveAt");
+
+    if (!hasUserStatus) {
+      await db.exec("ALTER TABLE users ADD COLUMN userStatus TEXT DEFAULT 'inactive'");
+    }
+    if (!hasLastLoginAt) {
+      await db.exec("ALTER TABLE users ADD COLUMN lastLoginAt TEXT");
+    }
+    if (!hasLastActiveAt) {
+      await db.exec("ALTER TABLE users ADD COLUMN lastActiveAt TEXT");
+    }
+
+    await db.run("UPDATE users SET userStatus = 'inactive' WHERE userStatus IS NULL OR userStatus = ''");
+
+    // One-time migration for old plaintext credentials.
+    const usersForCredentialMigration = await db.all(
+      "SELECT userId, userPassword, userPin FROM users"
+    );
+    for (const row of usersForCredentialMigration) {
+      const updates = [];
+      const params = [];
+
+      if (row.userPassword && !isBcryptHash(row.userPassword)) {
+        updates.push("userPassword = ?");
+        params.push(await bcrypt.hash(String(row.userPassword), BCRYPT_ROUNDS));
+      }
+
+      if (row.userPin && !isBcryptHash(row.userPin)) {
+        updates.push("userPin = ?");
+        params.push(await bcrypt.hash(String(row.userPin), BCRYPT_ROUNDS));
+      }
+
+      if (updates.length > 0) {
+        params.push(row.userId);
+        await db.run(`UPDATE users SET ${updates.join(", ")} WHERE userId = ?`, params);
+      }
+    }
     await db.exec(`
        CREATE TABLE IF NOT EXISTS requestSign (
          requestId INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -74,6 +122,27 @@ async function initializeDatabase() {
     await db.exec("CREATE INDEX IF NOT EXISTS idx_request_owner_status ON requestSign(ownerRequestID, requestStatus, requestId DESC)");
     await db.exec("CREATE INDEX IF NOT EXISTS idx_request_status_date ON requestSign(requestStatus, requestDate DESC)");
     await db.exec("CREATE INDEX IF NOT EXISTS idx_request_cnc_queue ON requestSign(requestStatus, cncDispatchedAt, cncCompletedAt, requestId ASC)");
+
+    await db.exec(`
+       CREATE TABLE IF NOT EXISTS activityLogs (
+         logId INTEGER PRIMARY KEY AUTOINCREMENT,
+         eventAt DATETIME NOT NULL,
+         actorUserId INTEGER,
+         actorEmail TEXT,
+         action TEXT NOT NULL,
+         targetType TEXT,
+         targetId TEXT,
+         targetDevice TEXT,
+         ipAddress TEXT,
+         status TEXT,
+         details TEXT,
+         metadata TEXT,
+         FOREIGN KEY (actorUserId) REFERENCES users(userId)
+       );
+    `);
+
+    await db.exec("CREATE INDEX IF NOT EXISTS idx_activity_eventAt ON activityLogs(eventAt DESC)");
+    await db.exec("CREATE INDEX IF NOT EXISTS idx_activity_action ON activityLogs(action, eventAt DESC)");
 
     const facultyCheck = await db.get("SELECT COUNT(*) as count FROM faculties");
     if (facultyCheck.count === 0) {

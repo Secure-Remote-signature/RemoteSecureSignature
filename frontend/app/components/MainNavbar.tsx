@@ -3,6 +3,8 @@ import "@/app/styles/components.css";
 import { Menu} from 'lucide-react';
 import api from '@/app/lib/api';
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+
 
 interface NavbarProps {
   userId: number;
@@ -11,6 +13,7 @@ interface NavbarProps {
 }
 
 export default function Navbar({ onMenuClick }: { onMenuClick?: () => void }) {
+  const router = useRouter();
   const [userProfile, setUserProfile] = useState<NavbarProps | null>(null);
   
   useEffect(() => {
@@ -23,6 +26,10 @@ export default function Navbar({ onMenuClick }: { onMenuClick?: () => void }) {
         const userId = session.id;
         const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/srs/user/profile/${userId}`;
         const response = await api.get(apiUrl);
+        if(response.data.error) {
+          router.push("/login");
+          return;
+        }
         // console.log()
         setUserProfile(response.data);
       } catch (error) {

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Loader2, Lock, CheckCircle2 } from 'lucide-react';
 import api, { isAxiosError } from '@/app/lib/api';
@@ -14,17 +14,24 @@ export default function ChangePass() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [userId, setUserId] = useState<string | null>(null);
 
-  const userId = useMemo(() => {
+  useEffect(() => {
     const raw = sessionStorage.getItem('user_session');
-    if (!raw) return null;
+    if (!raw) {
+      setErrorMsg('ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่');
+      router.replace('/login');
+      return;
+    }
+
     try {
       const parsed = JSON.parse(raw);
-      return parsed?.id ? String(parsed.id) : null;
+      setUserId(parsed?.id ? String(parsed.id) : null);
     } catch {
-      return null;
+      setErrorMsg('ข้อมูลผู้ใช้ไม่ถูกต้อง กรุณาเข้าสู่ระบบใหม่');
+      router.replace('/login');
     }
-  }, []);
+  }, [router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

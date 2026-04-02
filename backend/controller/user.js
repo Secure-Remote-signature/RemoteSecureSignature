@@ -2,10 +2,156 @@ import { open } from "sqlite";
 import sqlite3 from "sqlite3";
 import nodemailer from "nodemailer";
 import 'dotenv/config';
+import jwt from "jsonwebtoken";
+import bcrypt from "bcryptjs";
+import { getClientIp, writeActivityLog } from "../lib/activityLog.js";
 
 const sqlite3Verbose = sqlite3.verbose();
+const JWT_SECRET = String(process.env.JWT_SECRET || "dev-secret-change-me");
+const JWT_EXPIRES_IN = String(process.env.JWT_EXPIRES_IN || "8h");
+const PIN_REGEX = /^\d{6}$/;
+const OTP_TTL_MS = 5 * 60 * 1000;
+const OTP_COOLDOWN_MS = 60 * 1000;
+const OTP_MAX_ATTEMPTS = 5;
+const OTP_LOCK_MS = 10 * 60 * 1000;
+const BCRYPT_ROUNDS = Number(process.env.BCRYPT_ROUNDS || 10);
 
 let otpStore = {}; 
+
+function isBcryptHash(value) {
+  return /^\$2[aby]\$\d{2}\$/.test(String(value || ""));
+}
+
+async function hashSecret(raw) {
+  return bcrypt.hash(String(raw), BCRYPT_ROUNDS);
+}
+
+async function verifySecret(storedValue, inputRaw) {
+  const stored = String(storedValue || "");
+  const input = String(inputRaw || "");
+  if (!stored) return false;
+
+  if (isBcryptHash(stored)) {
+    return bcrypt.compare(input, stored);
+  }
+
+  // Legacy plaintext fallback. This keeps old rows working until migrated.
+  return stored === input;
+}
+
+function otpSeconds(ms) {
+  return Math.max(1, Math.ceil(ms / 1000));
+}
+
+function ensureOtpCanSend(email) {
+  const record = otpStore[email];
+  const now = Date.now();
+  if (!record) {
+    return { ok: true };
+  }
+
+  if (record.lockedUntil && now < record.lockedUntil) {
+    return {
+      ok: false,
+      code: 429,
+      error: "OTP temporarily locked due to too many invalid attempts",
+      retryAfterSec: otpSeconds(record.lockedUntil - now),
+    };
+  }
+
+  if (record.lastSentAt && now < (record.lastSentAt + OTP_COOLDOWN_MS)) {
+    return {
+      ok: false,
+      code: 429,
+      error: "Please wait before requesting OTP again",
+      retryAfterSec: otpSeconds((record.lastSentAt + OTP_COOLDOWN_MS) - now),
+    };
+  }
+
+  return { ok: true };
+}
+
+function verifyOtpForEmail(email, otp) {
+  const record = otpStore[email];
+  const now = Date.now();
+
+  if (!record) {
+    return { ok: false, code: 400, error: "Invalid OTP or OTP expired." };
+  }
+
+  if (record.lockedUntil && now < record.lockedUntil) {
+    return {
+      ok: false,
+      code: 429,
+      error: "OTP verification temporarily locked",
+      retryAfterSec: otpSeconds(record.lockedUntil - now),
+    };
+  }
+
+  if (now > record.expires) {
+    delete otpStore[email];
+    return { ok: false, code: 400, error: "OTP expired." };
+  }
+
+  if (String(record.otp) !== String(otp)) {
+    const nextFailedAttempts = Number(record.failedAttempts || 0) + 1;
+    record.failedAttempts = nextFailedAttempts;
+
+    if (nextFailedAttempts >= OTP_MAX_ATTEMPTS) {
+      record.lockedUntil = now + OTP_LOCK_MS;
+      return {
+        ok: false,
+        code: 429,
+        error: "Too many invalid OTP attempts",
+        retryAfterSec: otpSeconds(OTP_LOCK_MS),
+      };
+    }
+
+    return {
+      ok: false,
+      code: 400,
+      error: `Invalid OTP. Remaining attempts: ${OTP_MAX_ATTEMPTS - nextFailedAttempts}`,
+      remainingAttempts: OTP_MAX_ATTEMPTS - nextFailedAttempts,
+    };
+  }
+
+  return { ok: true };
+}
+
+function getAuthUser(req) {
+  const userId = Number(req.user?.id || 0);
+  const role = String(req.user?.role || "").toLowerCase();
+  return {
+    userId: Number.isInteger(userId) && userId > 0 ? userId : null,
+    role,
+    isAdmin: role.includes("admin"),
+  };
+}
+
+async function enforceSelfOrAdmin(db, req, targetUserId) {
+  const auth = getAuthUser(req);
+  if (!auth.userId) {
+    return { allowed: false, code: 401, error: "Unauthorized" };
+  }
+
+  if (auth.isAdmin || auth.userId === targetUserId) {
+    return { allowed: true, authUserId: auth.userId };
+  }
+
+  const actor = await db.get("SELECT userEmail FROM users WHERE userId = ?", [auth.userId]);
+  await writeActivityLog(db, {
+    actorUserId: auth.userId,
+    actorEmail: actor?.userEmail || null,
+    action: "FORBIDDEN",
+    targetType: "USER",
+    targetId: String(targetUserId),
+    ipAddress: getClientIp(req),
+    status: "FAILED",
+    details: `Unauthorized user access attempt to user ${targetUserId}`,
+  });
+
+  return { allowed: false, code: 403, error: "Forbidden" };
+}
 
 const createUser = async (req, res) => {
   try {
@@ -17,6 +163,9 @@ const createUser = async (req, res) => {
       return res.status(400).json({ error: "All fields are required!" });
     }
 
+    const hashedPassword = await hashSecret(userPassword);
+    const hashedPin = await hashSecret(userPin);
+
     const db = await open({
       filename: "./database/remote.db",
       driver: sqlite3Verbose.Database,
@@ -25,19 +174,20 @@ const createUser = async (req, res) => {
     const userDate = new Date().toISOString();
     const result = await db.run(
       `
-      INSERT INTO users (userName, userLastname, userDate, userEmail, userPassword, userRole, userPhone, userfacultyId, userPin)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO users (userName, userLastname, userDate, userEmail, userPassword, userRole, userPhone, userfacultyId, userPin, userStatus)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
       [
         userName,
         userLastname,
         userDate,
         userEmail,
-        userPassword,
+        hashedPassword,
         userRole,
         userPhone,
         userfacultyId,
-        userPin
+        hashedPin,
+        "inactive",
       ],
     );
 
@@ -54,7 +204,6 @@ const createUser = async (req, res) => {
 
 const loginUser = async (req, res) => {
   try {
-    console.log("Incoming Login Body:", req.body);
     const { userEmail, userPassword } = req.body;
     if (!userEmail || !userPassword) {
       return res.status(400).json({ error: "Email and password are required!" });
@@ -63,22 +212,67 @@ const loginUser = async (req, res) => {
       filename: "./database/remote.db",
       driver: sqlite3Verbose.Database,
     });
-    const user = await db.get(
-      `SELECT * FROM users WHERE userEmail = ? AND userPassword = ?`,
-      [userEmail, userPassword],
-    );
-    await db.close();
+    const normalizedEmail = String(userEmail || "").trim().toLowerCase();
+    const user = await db.get(`SELECT * FROM users WHERE lower(userEmail) = ?`, [normalizedEmail]);
+    const isValidPassword = await verifySecret(user?.userPassword, userPassword);
 
-    if (user) {
+    if (user && isValidPassword) {
+      if (!isBcryptHash(user.userPassword)) {
+        const upgradedPasswordHash = await hashSecret(userPassword);
+        await db.run("UPDATE users SET userPassword = ? WHERE userId = ?", [upgradedPasswordHash, user.userId]);
+      }
+
+      const now = new Date().toISOString();
+      await db.run(
+        `UPDATE users SET userStatus = 'active', lastLoginAt = ?, lastActiveAt = ? WHERE userId = ?`,
+        [now, now, user.userId],
+      );
+
+      await writeActivityLog(db, {
+        eventAt: now,
+        actorUserId: user.userId,
+        actorEmail: user.userEmail,
+        action: "LOGIN",
+        targetType: "AUTH",
+        targetId: String(user.userId),
+        ipAddress: getClientIp(req),
+        status: "SUCCESS",
+        details: "User logged in via Web",
+      });
+
+      await db.close();
+
+      const token = jwt.sign(
+        {
+          sub: user.userId,
+          role: user.userRole,
+          email: user.userEmail,
+        },
+        JWT_SECRET,
+        { expiresIn: JWT_EXPIRES_IN },
+      );
+
       res.status(200).json({
         message: "Login successful!",
         userId: user.userId,
         name: user.userName,
         lastName: user.userLastname,
         role: user.userRole,
-        token: "fake-jwt-token",
+        token,
       });
     } else {
+      await writeActivityLog(db, {
+        eventAt: new Date().toISOString(),
+        actorUserId: null,
+        actorEmail: String(userEmail || "").trim() || null,
+        action: "LOGIN",
+        targetType: "AUTH",
+        targetId: "-",
+        ipAddress: getClientIp(req),
+        status: "FAILED",
+        details: "Invalid email or password",
+      });
+      await db.close();
       res.status(401).json({ error: "Invalid email or password!" });
       }
     } catch (error) {
@@ -86,6 +280,82 @@ const loginUser = async (req, res) => {
       res.status(500).json({ error: "Internal server error" });
     }
   };
+
+const logoutUser = async (req, res) => {
+  try {
+    const requesterId = Number(req.user?.id || 0);
+
+    if (!Number.isInteger(requesterId) || requesterId <= 0) {
+      return res.status(400).json({ error: "Invalid user id" });
+    }
+
+    const db = await open({
+      filename: "./database/remote.db",
+      driver: sqlite3Verbose.Database,
+    });
+
+    const now = new Date().toISOString();
+    const result = await db.run(
+      `UPDATE users SET userStatus = 'inactive', lastActiveAt = ? WHERE userId = ?`,
+      [now, requesterId],
+    );
+
+    const actor = await db.get("SELECT userEmail FROM users WHERE userId = ?", [requesterId]);
+    await writeActivityLog(db, {
+      eventAt: now,
+      actorUserId: requesterId,
+      actorEmail: actor?.userEmail || null,
+      action: "LOGOUT",
+      targetType: "AUTH",
+      targetId: String(requesterId),
+      ipAddress: getClientIp(req),
+      status: result.changes > 0 ? "SUCCESS" : "FAILED",
+      details: result.changes > 0 ? "User logged out" : "Logout failed: user not found",
+    });
+
+    await db.close();
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    return res.status(200).json({ message: "Logout successful" });
+  } catch (error) {
+    console.error("Logout error:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+const heartbeatUser = async (req, res) => {
+  try {
+    const requesterId = Number(req.user?.id || 0);
+
+    if (!Number.isInteger(requesterId) || requesterId <= 0) {
+      return res.status(400).json({ error: "Invalid user id" });
+    }
+
+    const db = await open({
+      filename: "./database/remote.db",
+      driver: sqlite3Verbose.Database,
+    });
+
+    const now = new Date().toISOString();
+    const result = await db.run(
+      `UPDATE users SET userStatus = 'active', lastActiveAt = ? WHERE userId = ?`,
+      [now, requesterId],
+    );
+    await db.close();
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    return res.status(200).json({ message: "Heartbeat updated" });
+  } catch (error) {
+    console.error("Heartbeat error:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+};
 
 const verifyUserPin = async (req, res) => {
   try {
@@ -95,14 +365,25 @@ const verifyUserPin = async (req, res) => {
       return res.status(400).json({ error: "userId and userPin are required" });
     }
 
+    const targetUserId = Number(userId);
+    if (!Number.isInteger(targetUserId) || targetUserId <= 0) {
+      return res.status(400).json({ error: "Invalid userId" });
+    }
+
     const db = await open({
       filename: "./database/remote.db",
       driver: sqlite3Verbose.Database,
     });
 
+    const permission = await enforceSelfOrAdmin(db, req, targetUserId);
+    if (!permission.allowed) {
+      await db.close();
+      return res.status(permission.code).json({ error: permission.error });
+    }
+
     const user = await db.get(
       "SELECT userPin FROM users WHERE userId = ?",
-      [userId]
+      [targetUserId]
     );
     await db.close();
 
@@ -110,7 +391,8 @@ const verifyUserPin = async (req, res) => {
       return res.status(404).json({ error: "User not found" });
     }
 
-    if (String(user.userPin) !== String(userPin)) {
+    const isValidPin = await verifySecret(user.userPin, userPin);
+    if (!isValidPin) {
       return res.status(401).json({ error: "Invalid PIN" });
     }
 
@@ -125,20 +407,21 @@ const verifyUserPin = async (req, res) => {
 
 const deluser = async (req, res) => {
   try {
-    // 1. Get the user ID from the request URL parameters (e.g., /deleteuser/1)
-    const userId = req.params.id;
-    console.log(userId);
-    // 2. Validate that an ID was provided
-    if (!userId) {
-      return res
-        .status(400)
-        .json({ error: "User ID is required to delete a user!" });
+    const userId = Number(req.params.id);
+    if (!Number.isInteger(userId) || userId <= 0) {
+      return res.status(400).json({ error: "User ID is required to delete a user!" });
     }
 
     const db = await open({
       filename: "./database/remote.db", // Matching the filename you provided
       driver: sqlite3Verbose.Database,
     });
+
+    const permission = await enforceSelfOrAdmin(db, req, userId);
+    if (!permission.allowed) {
+      await db.close();
+      return res.status(permission.code).json({ error: permission.error });
+    }
 
     const result = await db.run(`DELETE FROM users WHERE userId = ?`, [userId]);
 
@@ -155,7 +438,7 @@ const deluser = async (req, res) => {
     // 7. Send the success response
     res.status(200).json({
       message: "User deleted successfully!",
-      deletedUserId: userId,
+      deletedUserId: Number(userId),
     });
   } catch (error) {
     console.error("Error deleting user:", error);
@@ -165,7 +448,7 @@ const deluser = async (req, res) => {
 
 const updateUser = async (req, res) => {
   try {
-    const userId = req.params.id;
+    const userId = Number(req.params.id);
     const {
       userName,
       userLastname,
@@ -173,13 +456,26 @@ const updateUser = async (req, res) => {
       userPassword,
     } = req.body;
 
-    if (!userId) {
+    if (!Number.isInteger(userId) || userId <= 0) {
       return res.status(400).json({ error: "User ID is required to update!" });
     }
     const db = await open({
       filename: "./database/remote.db",
       driver: sqlite3Verbose.Database,
     });
+
+    const permission = await enforceSelfOrAdmin(db, req, userId);
+    if (!permission.allowed) {
+      await db.close();
+      return res.status(permission.code).json({ error: permission.error });
+    }
+
+    const beforeUser = await db.get(
+      "SELECT userName, userLastname, userPhone, userPassword, userEmail FROM users WHERE userId = ?",
+      [userId],
+    );
+
+    const hashedPasswordOrNull = userPassword ? await hashSecret(userPassword) : null;
 
     const result = await db.run(
         `
@@ -194,10 +490,44 @@ const updateUser = async (req, res) => {
         userName,
         userLastname,
         userPhone,
-        userPassword,
+        hashedPasswordOrNull,
         userId,
       ],
     );
+
+    const updatedUser = await db.get(
+      "SELECT userEmail FROM users WHERE userId = ?",
+      [userId],
+    );
+
+    const changedFields = [];
+    if (beforeUser) {
+      const nextName = userName ?? beforeUser.userName;
+      const nextLastname = userLastname ?? beforeUser.userLastname;
+      const nextPhone = userPhone ?? beforeUser.userPhone;
+      const nextPassword = hashedPasswordOrNull ?? beforeUser.userPassword;
+
+      if (String(beforeUser.userName ?? "") !== String(nextName ?? "")) changedFields.push("userName");
+      if (String(beforeUser.userLastname ?? "") !== String(nextLastname ?? "")) changedFields.push("userLastname");
+      if (String(beforeUser.userPhone ?? "") !== String(nextPhone ?? "")) changedFields.push("userPhone");
+      if (String(beforeUser.userPassword ?? "") !== String(nextPassword ?? "")) changedFields.push("userPassword");
+    }
+
+    await writeActivityLog(db, {
+      actorUserId: Number(userId) || null,
+      actorEmail: updatedUser?.userEmail || null,
+      action: "ACCOUNT_UPDATE",
+      targetType: "USER",
+      targetId: String(userId),
+      ipAddress: getClientIp(req),
+      status: result.changes > 0 ? "SUCCESS" : "FAILED",
+      details: result.changes > 0
+        ? `Updated user profile${changedFields.length > 0 ? ` (${changedFields.join(", ")})` : ""}`
+        : "Update user profile failed",
+      metadata: {
+        changedFields,
+      },
+    });
 
     await db.close();
 
@@ -219,15 +549,35 @@ const updateUser = async (req, res) => {
 
 const getUserProfile = async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: "Invalid user id" });
+    }
+
     const db = await open({ 
       filename: "./database/remote.db", 
       driver: sqlite3Verbose.Database });
 
+    const permission = await enforceSelfOrAdmin(db, req, id);
+    if (!permission.allowed) {
+      await db.close();
+      return res.status(permission.code).json({ error: permission.error });
+    }
+
     const user = await db.get(
       `
       SELECT
-        u.*, 
+        u.userId,
+        u.userName,
+        u.userLastname,
+        u.userDate,
+        u.userEmail,
+        u.userRole,
+        u.userPhone,
+        u.userfacultyId,
+        u.userStatus,
+        u.lastLoginAt,
+        u.lastActiveAt,
         f.facultyName as userfacultyName
       FROM users u
       LEFT JOIN faculties f ON u.userfacultyId = f.facultyId
@@ -249,11 +599,12 @@ const getUserProfile = async (req, res) => {
 
 const changePassword = async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = Number(req.params.id);
     const { oldPassword, newPassword } = req.body;
 
-    console.log("Update Request for ID:", id);
-    console.log("Body Received:", req.body); 
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: "Invalid user id" });
+    }
 
     if (!oldPassword || !newPassword) {
       return res.status(400).json({ error: "กรุณาส่งข้อมูลให้ครบ (oldPassword, newPassword)" });
@@ -261,10 +612,17 @@ const changePassword = async (req, res) => {
 
     const db = await open({ filename: "./database/remote.db", driver: sqlite3Verbose.Database });
 
+    const permission = await enforceSelfOrAdmin(db, req, id);
+    if (!permission.allowed) {
+      await db.close();
+      return res.status(permission.code).json({ error: permission.error });
+    }
+
     // 1. check old password
     const user = await db.get("SELECT userPassword FROM users WHERE userId = ?", [id]);
 
-    if (!user || user.userPassword !== oldPassword) {
+    const isValidOldPassword = await verifySecret(user?.userPassword, oldPassword);
+    if (!user || !isValidOldPassword) {
       await db.close();
       return res.status(401).json({ error: "รหัสผ่านเดิมไม่ถูกต้อง" });
     }
@@ -276,10 +634,24 @@ const changePassword = async (req, res) => {
     }
 
     // 3. Update
+    const hashedNewPassword = await hashSecret(newPassword);
     await db.run(
       "UPDATE users SET userPassword = ? WHERE userId = ?", 
-      [newPassword, id]
+      [hashedNewPassword, id]
       );
+
+    const actor = await db.get("SELECT userEmail FROM users WHERE userId = ?", [id]);
+    await writeActivityLog(db, {
+      actorUserId: Number(id) || null,
+      actorEmail: actor?.userEmail || null,
+      action: "ACCOUNT_PASSWORD_CHANGE",
+      targetType: "USER",
+      targetId: String(id),
+      ipAddress: getClientIp(req),
+      status: "SUCCESS",
+      details: "User changed password",
+    });
+
     await db.close();
 
     res.status(200).json({ message: "เปลี่ยนรหัสผ่านสำเร็จ" });
@@ -299,13 +671,25 @@ const transporter = nodemailer.createTransport({
 
 const requestOTP = async (req, res) => {
     try {
-        const { email } = req.body;
-        if (!email) return res.status(400).json({ error: "Email is required!" });
+    const email = String(req.body?.email || "").trim().toLowerCase();
+    if (!email) return res.status(400).json({ error: "Email is required!" });
+
+    const otpWindow = ensureOtpCanSend(email);
+    if (!otpWindow.ok) {
+      return res.status(otpWindow.code || 429).json({
+        error: otpWindow.error,
+        retryAfterSec: otpWindow.retryAfterSec || otpSeconds(OTP_COOLDOWN_MS),
+      });
+    }
 
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const now = Date.now();
         otpStore[email] = {
             otp: otp,
-            expires: Date.now() + 300000 
+      expires: now + OTP_TTL_MS,
+      lastSentAt: now,
+      failedAttempts: 0,
+      lockedUntil: null,
         };
 
         await transporter.sendMail({
@@ -314,7 +698,11 @@ const requestOTP = async (req, res) => {
             subject: 'Your OTP for Password Reset',
             text: `Your OTP is: ${otp}. It will expire in 5 minutes.`
         });
-        res.status(200).json({ message: 'OTP sent successfully' });
+        res.status(200).json({
+          message: 'OTP sent successfully',
+          expiresInSec: otpSeconds(OTP_TTL_MS),
+          cooldownSec: otpSeconds(OTP_COOLDOWN_MS),
+        });
     } catch (error) {
         console.error("OTP Request Error:", error);
         res.status(500).json({ message: 'Failed to send email' });
@@ -322,54 +710,193 @@ const requestOTP = async (req, res) => {
 };
 
 const verifyOTP = async (req, res) => {
-    console.log("--- Debug OTP Verification ---");
-    console.log("Body ที่ได้รับ:", req.body); 
-    
     const { email, otp, newPassword } = req.body;
 
     try {
-        const storedData = otpStore[email];
-
-        if (!storedData) {
-            console.log("❌ ไม่พบการขอ OTP สำหรับอีเมลนี้");
-            return res.status(400).json({ error: "Invalid OTP or OTP expired." });
-        }
-        if (Date.now() > storedData.expires) {
-            delete otpStore[email]; // ลบทิ้งถ้าหมดอายุ
-            console.log("❌ OTP หมดอายุแล้ว");
-            return res.status(400).json({ error: "OTP expired." });
-        }
-        if (String(storedData.otp) !== String(otp)) {
-            console.log("❌ รหัส OTP ไม่ตรงกัน! ในระบบ:", storedData.otp, "ที่ส่งมา:", otp);
-            return res.status(400).json({ error: "Invalid OTP." });
+        const normalizedEmail = String(email || "").trim().toLowerCase();
+        const otpCheck = verifyOtpForEmail(normalizedEmail, otp);
+        if (!otpCheck.ok) {
+            if (otpCheck.retryAfterSec) {
+              return res.status(otpCheck.code || 400).json({ error: otpCheck.error, retryAfterSec: otpCheck.retryAfterSec });
+            }
+            if (typeof otpCheck.remainingAttempts === "number") {
+              return res.status(otpCheck.code || 400).json({ error: otpCheck.error, remainingAttempts: otpCheck.remainingAttempts });
+            }
+            return res.status(otpCheck.code || 400).json({ error: otpCheck.error });
         }
 
-        console.log("✅ OTP ถูกต้อง! กำลังอัปเดตรหัสผ่านใหม่ใน Database...");
         const db = await open({
             filename: "./database/remote.db",
             driver: sqlite3Verbose.Database,
         });
 
+        const hashedPassword = await hashSecret(newPassword);
+
         const result = await db.run(
             "UPDATE users SET userPassword = ? WHERE userEmail = ?",
-            [newPassword, email]
+          [hashedPassword, normalizedEmail]
         );
 
         await db.close();
 
         if (result.changes === 0) {
-            console.log("❌ ไม่พบ User นี้ในฐานข้อมูลจริง (UPDATE ไม่สำเร็จ)");
             return res.status(404).json({ error: "User not found in database." });
         }
-        delete otpStore[email];
-
-        console.log("🎉 อัปเดตรหัสผ่านสำเร็จ!");
+        delete otpStore[normalizedEmail];
         res.status(200).json({ message: "Update password successfully" });
 
     } catch (error) {
-        console.error("🔥 Error ใน verifyOTP:", error);
+          console.error("verifyOTP error:", error);
         res.status(500).json({ error: "Internal server error" });
     }
+};
+
+const resetPinWithOtp = async (req, res) => {
+  try {
+    const { email, password, otp, newPin } = req.body || {};
+    const normalizedEmail = String(email || "").trim().toLowerCase();
+
+    if (!normalizedEmail || !password || !otp || !newPin) {
+      return res.status(400).json({ error: "email, password, otp, and newPin are required" });
+    }
+
+    if (!PIN_REGEX.test(String(newPin))) {
+      return res.status(400).json({ error: "PIN must be exactly 6 digits" });
+    }
+
+    const otpCheck = verifyOtpForEmail(normalizedEmail, otp);
+    if (!otpCheck.ok) {
+      if (otpCheck.retryAfterSec) {
+        return res.status(otpCheck.code || 400).json({ error: otpCheck.error, retryAfterSec: otpCheck.retryAfterSec });
+      }
+      if (typeof otpCheck.remainingAttempts === "number") {
+        return res.status(otpCheck.code || 400).json({ error: otpCheck.error, remainingAttempts: otpCheck.remainingAttempts });
+      }
+      return res.status(otpCheck.code || 400).json({ error: otpCheck.error });
+    }
+
+    const db = await open({
+      filename: "./database/remote.db",
+      driver: sqlite3Verbose.Database,
+    });
+
+    const user = await db.get(
+      "SELECT userId, userEmail, userPassword FROM users WHERE lower(userEmail) = ?",
+      [normalizedEmail],
+    );
+
+    const isValidPassword = await verifySecret(user?.userPassword, password);
+    if (!user || !isValidPassword) {
+      await db.close();
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
+
+    const hashedPin = await hashSecret(newPin);
+    await db.run("UPDATE users SET userPin = ? WHERE userId = ?", [hashedPin, user.userId]);
+
+    await writeActivityLog(db, {
+      actorUserId: user.userId,
+      actorEmail: user.userEmail,
+      action: "ACCOUNT_PIN_RESET",
+      targetType: "USER",
+      targetId: String(user.userId),
+      ipAddress: getClientIp(req),
+      status: "SUCCESS",
+      details: "User reset PIN with email/password/otp verification",
+    });
+
+    await db.close();
+    delete otpStore[normalizedEmail];
+    return res.status(200).json({ message: "PIN reset successfully" });
+  } catch (error) {
+    console.error("resetPinWithOtp error:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+const changePinWithOtp = async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { email, password, otp, oldPin, newPin } = req.body || {};
+    const normalizedEmail = String(email || "").trim().toLowerCase();
+
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: "Invalid user id" });
+    }
+
+    if (!normalizedEmail || !password || !otp || !oldPin || !newPin) {
+      return res.status(400).json({ error: "email, password, otp, oldPin, and newPin are required" });
+    }
+
+    if (!PIN_REGEX.test(String(oldPin)) || !PIN_REGEX.test(String(newPin))) {
+      return res.status(400).json({ error: "PIN must be exactly 6 digits" });
+    }
+
+    const otpCheck = verifyOtpForEmail(normalizedEmail, otp);
+    if (!otpCheck.ok) {
+      if (otpCheck.retryAfterSec) {
+        return res.status(otpCheck.code || 400).json({ error: otpCheck.error, retryAfterSec: otpCheck.retryAfterSec });
+      }
+      if (typeof otpCheck.remainingAttempts === "number") {
+        return res.status(otpCheck.code || 400).json({ error: otpCheck.error, remainingAttempts: otpCheck.remainingAttempts });
+      }
+      return res.status(otpCheck.code || 400).json({ error: otpCheck.error });
+    }
+
+    const db = await open({
+      filename: "./database/remote.db",
+      driver: sqlite3Verbose.Database,
+    });
+
+    const permission = await enforceSelfOrAdmin(db, req, id);
+    if (!permission.allowed) {
+      await db.close();
+      return res.status(permission.code).json({ error: permission.error });
+    }
+
+    const user = await db.get(
+      "SELECT userId, userEmail, userPassword, userPin FROM users WHERE userId = ?",
+      [id],
+    );
+
+    if (!user) {
+      await db.close();
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const isValidPassword = await verifySecret(user?.userPassword, password);
+    if (String(user.userEmail || "").toLowerCase() !== normalizedEmail || !isValidPassword) {
+      await db.close();
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
+
+    const isValidOldPin = await verifySecret(user.userPin, oldPin);
+    if (!isValidOldPin) {
+      await db.close();
+      return res.status(401).json({ error: "Old PIN is incorrect" });
+    }
+
+    const hashedPin = await hashSecret(newPin);
+    await db.run("UPDATE users SET userPin = ? WHERE userId = ?", [hashedPin, id]);
+
+    await writeActivityLog(db, {
+      actorUserId: id,
+      actorEmail: user.userEmail,
+      action: "ACCOUNT_PIN_CHANGE",
+      targetType: "USER",
+      targetId: String(id),
+      ipAddress: getClientIp(req),
+      status: "SUCCESS",
+      details: "User changed PIN with old PIN and email/password/otp verification",
+    });
+
+    await db.close();
+    delete otpStore[normalizedEmail];
+    return res.status(200).json({ message: "PIN changed successfully" });
+  } catch (error) {
+    console.error("changePinWithOtp error:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
 };
 
 const getFaculties = async (req, res) => {
@@ -391,14 +918,67 @@ const getFaculties = async (req, res) => {
 
 export const getAllStaff = async (req, res) => {
     try {
+    const { clientId } = req.query;
         const db = await open({ 
             filename: "./database/remote.db", 
             driver: sqlite3Verbose.Database 
         });
 
-        const staffs = await db.all(
-            "SELECT userId, userName, userLastname FROM users WHERE userRole IN ('admin', 'staff', 'professor')"
-        );
+    let staffs;
+    if (clientId) {
+      const numericClientId = Number(clientId);
+      if (!Number.isInteger(numericClientId) || numericClientId <= 0) {
+        await db.close();
+        return res.status(400).json({ error: "Invalid clientId" });
+      }
+
+      const requester = await db.get(
+        "SELECT userfacultyId FROM users WHERE userId = ?",
+        [numericClientId]
+      );
+
+      if (!requester) {
+        await db.close();
+        return res.status(404).json({ error: "Requester not found" });
+      }
+
+      staffs = await db.all(
+        `
+        SELECT
+          u.userId,
+          u.userName,
+          u.userLastname,
+          u.userEmail,
+          u.userPhone,
+          u.userRole,
+          f.facultyName
+        FROM users u
+        LEFT JOIN faculties f ON f.facultyId = u.userfacultyId
+        WHERE u.userRole IN ('admin', 'staff', 'professor')
+          AND u.userfacultyId = ?
+          AND u.userId != ?
+        ORDER BY u.userName ASC, u.userLastname ASC
+        `,
+        [requester.userfacultyId, numericClientId]
+      );
+    } else {
+      staffs = await db.all(
+        `
+        SELECT
+          u.userId,
+          u.userName,
+          u.userLastname,
+          u.userEmail,
+          u.userPhone,
+          u.userRole,
+          f.facultyName
+        FROM users u
+        LEFT JOIN faculties f ON f.facultyId = u.userfacultyId
+        WHERE u.userRole IN ('admin', 'staff', 'professor')
+        ORDER BY u.userName ASC, u.userLastname ASC
+        `
+      );
+    }
         
         await db.close();
         res.status(200).json(staffs);
@@ -412,6 +992,8 @@ export const getAllStaff = async (req, res) => {
 export default {
   createUser,
   loginUser,
+  logoutUser,
+  heartbeatUser,
   verifyUserPin,
   deluser,
   updateUser,
@@ -419,6 +1001,8 @@ export default {
   changePassword,
   requestOTP,
   verifyOTP,
+  resetPinWithOtp,
+  changePinWithOtp,
   getFaculties,
   getAllStaff
 };

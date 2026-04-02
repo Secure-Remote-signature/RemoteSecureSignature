@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import messagebox
 import requests
-from app_config import build_api_url
+from app_config import build_api_url, build_auth_headers
 
 class ChangePasswordPage(tk.Frame):
     def __init__(self, parent, controller):
@@ -58,7 +58,7 @@ class ChangePasswordPage(tk.Frame):
         }
 
         try:
-            response = requests.put(api_url, json=payload, timeout=5)
+            response = requests.put(api_url, json=payload, timeout=5, headers=build_auth_headers(self.controller))
             if response.status_code == 200:
                 messagebox.showinfo("Success", "เปลี่ยนรหัสผ่านเรียบร้อยแล้ว!")
                 self.controller.show_frame("SettingPage")

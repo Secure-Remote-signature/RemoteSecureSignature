@@ -3,7 +3,7 @@ from tkinter import messagebox, ttk
 import requests
 from userSigning.alert import IncomingAlert
 from userSigning.reject_reason import prompt_reject_reason
-from app_config import build_api_url
+from app_config import build_api_url, build_auth_headers
 
 class DashboardPage(tk.Frame):
     def __init__(self, parent, controller):
@@ -77,7 +77,7 @@ class DashboardPage(tk.Frame):
                 "ownerRequestID": self.prof_id,
                 "claimerId": self.prof_id
             }
-            response = requests.post(url, json=payload, timeout=3)
+            response = requests.post(url, json=payload, timeout=3, headers=build_auth_headers(self.controller))
             
             if response.status_code == 200:
                 data = response.json()
@@ -128,7 +128,12 @@ class DashboardPage(tk.Frame):
             return
         
         try:
-            res = requests.put(api_url, json={"status": "Rejected", "rejectReason": reason}, timeout=3)
+            res = requests.put(
+                api_url,
+                json={"status": "Rejected", "rejectReason": reason},
+                timeout=3,
+                headers=build_auth_headers(self.controller),
+            )
             if res.status_code == 200:
                 messagebox.showinfo("สำเร็จ", "ปฏิเสธคำร้องแล้ว")
             else:

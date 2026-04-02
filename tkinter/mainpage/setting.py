@@ -2,7 +2,7 @@ import tkinter as tk
 from tkinter import messagebox
 
 import requests
-from app_config import build_api_url
+from app_config import build_api_url, build_auth_headers
 
 class SettingPage(tk.Frame):
     def __init__(self, parent, controller):
@@ -56,6 +56,10 @@ class SettingPage(tk.Frame):
                   bg="#F59E0B", fg="#FFFFFF", relief="flat", activebackground="#D97706",
                   command=lambda: controller.show_frame("ChangePasswordPage")).pack(anchor="w", pady=(5, 0), ipady=5, ipadx=10)
 
+        tk.Button(left_col, text="เปลี่ยน PIN", font=("Arial", 10, "bold"),
+              bg="#0EA5E9", fg="#FFFFFF", relief="flat", activebackground="#0284C7",
+              command=lambda: controller.show_frame("ChangePinPage")).pack(anchor="w", pady=(8, 0), ipady=5, ipadx=10)
+
         # --- RIGHT COLUMN (Read-only Fields) ---
         self.create_label(right_col, "ตำแหน่ง (ไม่สามารถแก้ไขได้):", is_admin_only=True)
         self.position_entry = self.create_readonly_text(right_col, "Loading...")
@@ -76,7 +80,7 @@ class SettingPage(tk.Frame):
         api_url = build_api_url(f"/srs/user/profile/{user_id}")
 
         try:
-            response = requests.get(api_url, timeout=5)
+            response = requests.get(api_url, timeout=5, headers=build_auth_headers(self.controller))
             if response.status_code == 200:
                 data = response.json()
 
@@ -138,7 +142,7 @@ class SettingPage(tk.Frame):
         }
 
         try:
-            response = requests.put(api_url, json=payload, timeout=5)
+            response = requests.put(api_url, json=payload, timeout=5, headers=build_auth_headers(self.controller))
             if response.status_code == 200:
                 messagebox.showinfo("สำเร็จ", "อัปเดตข้อมูลส่วนตัวเรียบร้อยแล้ว!")
                 self.controller.current_user = payload["userName"]
@@ -153,7 +157,7 @@ class SettingPage(tk.Frame):
             api_url = build_api_url(f"/srs/user/deluser/{user_id}")
 
             try:
-                response = requests.delete(api_url, timeout=5)
+                response = requests.delete(api_url, timeout=5, headers=build_auth_headers(self.controller))
                 if response.status_code == 200:
                     messagebox.showinfo("สำเร็จ", "ลบบัญชีเรียบร้อยแล้ว")
                     self.controller.show_frame("LoginPage") # เด้งกลับไปหน้า Login

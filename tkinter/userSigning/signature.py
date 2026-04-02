@@ -4,7 +4,8 @@ import requests
 from PIL import Image, ImageTk, ImageDraw, ImageOps
 from io import BytesIO
 import json
-from app_config import API_BASE_URL
+from app_config import API_BASE_URL, build_api_url, build_auth_headers
+from userSigning.reject_reason import prompt_reject_reason
 
 class SignaturePage(tk.Frame):
     def __init__(self, parent, controller):
@@ -53,6 +54,17 @@ class SignaturePage(tk.Frame):
         # Confirm/Simulate Button
         tk.Button(toolbar, text="PREVIEW + CONFIRM", font=("Arial", 10, "bold"), bg="#10B981", fg="#FFFFFF", 
             relief="flat", padx=20, command=self.show_simulation).pack(side="right", padx=15)
+
+        tk.Button(
+            toolbar,
+            text="ปฏิเสธการลงนาม",
+            font=("Arial", 10, "bold"),
+            bg="#E11D48",
+            fg="#FFFFFF",
+            relief="flat",
+            padx=15,
+            command=self.reject_request,
+        ).pack(side="right", padx=5)
 
         # --- Main Split Screen (Using PanedWindow) ---
         self.paned_window = tk.PanedWindow(self, orient=tk.HORIZONTAL, bg="#E5E7EB", sashwidth=6)
@@ -110,7 +122,7 @@ class SignaturePage(tk.Frame):
 
         try:
             url = f"{self.backend_url}/srs/request/pending/{self.controller.current_user_id}"
-            response = requests.get(url, timeout=5)
+            response = requests.get(url, timeout=5, headers=build_auth_headers(self.controller))
             if response.status_code == 200 and response.json():
                 self.current_request = response.json()
                 self.load_doc_from_request(self.current_request)
@@ -120,7 +132,6 @@ class SignaturePage(tk.Frame):
             messagebox.showerror("Error", f"เชื่อมต่อ backend ไม่สำเร็จ: {e}")
 
     def set_request_data(self, data):
-        # Always reset previous drawing/doc state when a new request arrives.
         self.clear_sign()
         self.current_request = data
         self.signature_area = None
@@ -129,23 +140,35 @@ class SignaturePage(tk.Frame):
         self.left_canvas.delete("all")
         self.load_doc_from_request(data)
 
+    def get_a4_px_size(self):
+        width_px = round(210 * 300 / 25.4)
+        height_px = round(297 * 300 / 25.4)
+        return width_px, height_px
+
+    def normalize_image_to_a4(self, source_img):
+        a4_w, a4_h = self.get_a4_px_size()
+        img = ImageOps.exif_transpose(source_img).convert("RGB")
+        src_w, src_h = img.size
+        resized = img.resize((a4_w, a4_h), Image.Resampling.LANCZOS)
+        scale_x = a4_w / max(1, src_w)
+        scale_y = a4_h / max(1, src_h)
+        return resized, {"scale_x": scale_x, "scale_y": scale_y}
+    
     def load_doc_from_request(self, data):
         filename = data.get("requestPicture") or data.get("docFileName")
         if not filename:
             messagebox.showwarning("Warning", "ไม่พบชื่อไฟล์เอกสาร")
             return
-
         img_url = f"{self.backend_url}/uploads/{filename}"
         try:
             response = requests.get(img_url, timeout=10)
             if response.status_code != 200:
                 messagebox.showerror("Error", f"โหลดเอกสารไม่สำเร็จ (HTTP {response.status_code})")
                 return
-
             raw_img = Image.open(BytesIO(response.content))
-            self.orig_img = ImageOps.exif_transpose(raw_img)
+            normalized_img, transform = self.normalize_image_to_a4(raw_img)
+            self.orig_img = normalized_img
 
-            # signatureArea อาจมาเป็น object หรือ JSON string จาก DB
             raw_area = data.get("signatureArea")
             if isinstance(raw_area, str):
                 try:
@@ -153,7 +176,15 @@ class SignaturePage(tk.Frame):
                 except json.JSONDecodeError:
                     raw_area = None
 
-            self.signature_area = raw_area or {"x": 200, "y": 1200, "width": 400, "height": 200}
+            if raw_area:
+                self.signature_area = {
+                    "x": float(raw_area.get("x", 0)) * transform["scale_x"],
+                    "y": float(raw_area.get("y", 0)) * transform["scale_y"],
+                    "width": float(raw_area.get("width", 0)) * transform["scale_x"],
+                    "height": float(raw_area.get("height", 0)) * transform["scale_y"]
+                }
+            else:
+                self.signature_area = {"x": 200, "y": 1200, "width": 400, "height": 200}
             self.zoom_level = 1.0
             self.update_base_fit_zoom()
             self.render_left_canvas()
@@ -171,6 +202,15 @@ class SignaturePage(tk.Frame):
         self.left_canvas.delete("all")
         self.left_canvas.create_image(0, 0, image=self.tk_left_img, anchor=tk.NW)
         self.left_canvas.config(scrollregion=(0, 0, new_size[0], new_size[1]))
+        
+        dead_zone_mm = 55
+        dead_zone_px = (dead_zone_mm * 300 / 25.4) * effective_zoom
+        
+        self.left_canvas.create_rectangle(0, 0, new_size[0], dead_zone_px, 
+            fill="#FEE2E2", outline="#EF4444", width=2, stipple="gray50")
+        self.left_canvas.create_text(new_size[0] / 2, dead_zone_px / 2, 
+            text="พื้นที่นี้ไม่สามารถเซ็นได้ (Dead Zone)", 
+            fill="#EF4444", font=("Arial", 12, "bold"))
         if self.signature_area:
             x = self.signature_area["x"] * effective_zoom
             y = self.signature_area["y"] * effective_zoom
@@ -274,3 +314,37 @@ class SignaturePage(tk.Frame):
             "paper_height": paper_height
         }
         self.controller.show_frame("PinConfirmPage", data=payload)
+
+    def reject_request(self):
+        if not self.current_request:
+            messagebox.showwarning("Warning", "ไม่พบข้อมูลงานลงนาม")
+            return
+
+        if not messagebox.askyesno("ยืนยัน", "คุณต้องการปฏิเสธการลงนามใช่หรือไม่?"):
+            return
+
+        reason = prompt_reject_reason(self.winfo_toplevel())
+        if reason is None:
+            return
+
+        req_id = self.current_request.get("requestId")
+        if not req_id:
+            messagebox.showerror("Error", "ไม่พบ requestId")
+            return
+
+        try:
+            res = requests.put(
+                build_api_url(f"/srs/request/update-status/{req_id}"),
+                json={"status": "Rejected", "rejectReason": reason},
+                timeout=5,
+                headers=build_auth_headers(self.controller),
+            )
+            if res.status_code == 200:
+                if hasattr(self.controller, "end_signing_flow_lock"):
+                    self.controller.end_signing_flow_lock()
+                messagebox.showinfo("สำเร็จ", "ปฏิเสธการลงนามแล้ว")
+                self.controller.show_frame("DashboardPage")
+            else:
+                messagebox.showerror("Error", f"ปฏิเสธไม่สำเร็จ (HTTP {res.status_code})")
+        except Exception as exc:
+            messagebox.showerror("Error", f"เชื่อมต่อ backend ไม่สำเร็จ: {exc}")

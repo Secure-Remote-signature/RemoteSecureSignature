@@ -4,6 +4,7 @@ import { useState } from "react";
 import "@/app/styles/globals.css";
 import MainNavbar from "../components/MainNavbar";
 import Slidebar from "../components/Slidebar";
+import SessionTimeoutGuard from "../components/SessionTimeoutGuard";
 
 export default function MainLayout({
   children,
@@ -14,6 +15,7 @@ export default function MainLayout({
   
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-[#F9FAFB]">
+      <SessionTimeoutGuard />
       
       {/* ส่วนหัว (Header) */}
       <header className="w-full bg-white relative z-30">

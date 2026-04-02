@@ -3,6 +3,8 @@ import sqlite3 from 'sqlite3';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { getClientIp, writeActivityLog } from '../lib/activityLog.js';
+import { broadcastRealtimeEvent } from '../lib/realtime.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -25,6 +27,66 @@ const TRANSITIONS = {
     [REQUEST_STATUS.SIGNED]: new Set([]),
     [REQUEST_STATUS.REJECTED]: new Set([])
 };
+
+function getAuthContext(req) {
+    const userId = Number(req.user?.id || 0);
+    const role = String(req.user?.role || '').toLowerCase();
+    return {
+        userId: Number.isInteger(userId) && userId > 0 ? userId : null,
+        role,
+        isAdmin: role.includes('admin'),
+    };
+}
+
+function canAccessUserScopedResource(req, targetUserId) {
+    const auth = getAuthContext(req);
+    return Boolean(auth.userId) && (auth.isAdmin || auth.userId === Number(targetUserId));
+}
+
+async function logForbiddenRequestAccess(req, {
+    db = null,
+    targetType = 'REQUEST',
+    targetId = '-',
+    targetDevice = '-',
+    details = 'Forbidden',
+    metadata = {},
+} = {}) {
+    const auth = getAuthContext(req);
+    let conn = db;
+    let shouldClose = false;
+
+    try {
+        if (!conn) {
+            conn = await open({ filename: './database/remote.db', driver: sqlite3.Database });
+            shouldClose = true;
+        }
+
+        let actorEmail = null;
+        if (auth.userId) {
+            const actor = await conn.get('SELECT userEmail FROM users WHERE userId = ?', [auth.userId]);
+            actorEmail = actor?.userEmail || null;
+        }
+
+        await writeActivityLog(conn, {
+            actorUserId: auth.userId,
+            actorEmail,
+            action: 'FORBIDDEN',
+            targetType,
+            targetId: String(targetId),
+            targetDevice,
+            ipAddress: getClientIp(req),
+            status: 'FAILED',
+            details,
+            metadata,
+        });
+    } catch (error) {
+        console.error('logForbiddenRequestAccess error:', error);
+    } finally {
+        if (shouldClose && conn) {
+            await conn.close();
+        }
+    }
+}
 
 function nowIso() {
     return new Date().toISOString();
@@ -91,68 +153,210 @@ async function transitionStatus(db, requestId, toStatus, expectedStatus = null, 
         return { ok: false, code: 409, error: "Transition failed" };
     }
 
+    broadcastRealtimeEvent("request.statusChanged", {
+        requestId: Number(requestId),
+        toStatus,
+        fromStatus: current.requestStatus,
+    });
+
     return { ok: true };
 }
 
 // backend/controller/request.js
 
 const submitRequest = async (req, res) => {
-    const { docId, subject, documentImage, ownerId, clientId, message, rtsp, camera, signatureArea } = req.body;
+    try {
+        const { docId, subject, documentImage, ownerId, clientId, message, rtsp, camera, signatureArea } = req.body || {};
 
-    const fileName = `${docId}.png`;
-    const filePath = path.join(uploadDir, fileName);
-    const base64Data = documentImage.replace(/^data:image\/\w+;base64,/, "");
+        const authenticatedUserId = Number(req.user?.id || 0);
+        const clientIdNumber = Number(clientId);
+        const ownerIdNumber = Number(ownerId);
 
-    fs.writeFile(filePath, base64Data, 'base64', async (err) => {
-        if (err) {
-            return res.status(500).json({ error: "Failed to save image" });
+        if (!Number.isInteger(authenticatedUserId) || authenticatedUserId <= 0) {
+            return res.status(401).json({ error: "Unauthorized user context" });
         }
 
-        try {
-            const db = await open({ filename: "./database/remote.db", driver: sqlite3.Database });
+        if (!Number.isInteger(clientIdNumber) || clientIdNumber <= 0) {
+            return res.status(400).json({ error: "Invalid clientId" });
+        }
 
-            const params = [
-                docId,
-                new Date().toISOString(),
-                subject || null,
-                message || "",
-                rtsp || camera || "none",
-                fileName,
-                ownerId,
-                clientId,
-                'Pending',
-                JSON.stringify(signatureArea || null),
-                nowIso(),
-                nowIso()
-            ];
-
-            const lifecycleSql = `
-                INSERT INTO requestSign (
-                    requestNumber, requestDate, requestSubject, requestMessage,
-                    requestRTSP, requestPicture, ownerRequestID,
-                    clientRequestID, requestStatus, signatureArea,
-                    createdAt, updatedAt
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `;
-
-            const result = await db.run(lifecycleSql, params);
-            await db.close();
-            
-            res.status(200).json({
-                message: "Success",
-                requestId: result.lastID,
-                requestNumber: docId
+        if (authenticatedUserId !== clientIdNumber) {
+            await logForbiddenRequestAccess(req, {
+                targetType: 'REQUEST',
+                targetId: 'submit',
+                details: `clientId ${clientIdNumber} does not match authenticated user ${authenticatedUserId}`,
+                metadata: { clientId: clientIdNumber, authenticatedUserId },
             });
-        } catch (dbErr) {
-            console.error("❌ SQL Error Details:", dbErr.message);
-            res.status(500).json({ error: "Database error: " + dbErr.message });
+            return res.status(403).json({ error: "clientId does not match logged-in user" });
         }
-    });
+
+        if (!Number.isInteger(ownerIdNumber) || ownerIdNumber <= 0) {
+            return res.status(400).json({ error: "Invalid ownerId" });
+        }
+
+        if (ownerIdNumber === clientIdNumber) {
+            return res.status(400).json({ error: "Cannot send request to yourself" });
+        }
+
+        const normalizedDocId = String(docId || `DOC-${Date.now()}`)
+            .trim()
+            .replace(/[^a-zA-Z0-9_-]/g, "");
+        if (!normalizedDocId) {
+            return res.status(400).json({ error: "Invalid document id" });
+        }
+
+        const normalizedSubject = String(subject || "").trim();
+        const normalizedMessage = String(message || "").trim();
+        if (!normalizedSubject) {
+            return res.status(400).json({ error: "Subject is required" });
+        }
+        if (!normalizedMessage) {
+            return res.status(400).json({ error: "Message is required" });
+        }
+
+        if (normalizedSubject.length > 255 || normalizedMessage.length > 5000) {
+            return res.status(400).json({ error: "Request content is too long" });
+        }
+
+        const imagePrefixMatch = String(documentImage || "").match(/^data:image\/(png|jpeg|jpg|webp);base64,/i);
+        if (!imagePrefixMatch) {
+            return res.status(400).json({ error: "Invalid image format" });
+        }
+
+        const base64Data = String(documentImage).replace(/^data:image\/\w+;base64,/, "");
+        if (!base64Data) {
+            return res.status(400).json({ error: "Empty image data" });
+        }
+
+        const db = await open({ filename: "./database/remote.db", driver: sqlite3.Database });
+
+        const requester = await db.get(
+            "SELECT userId, userfacultyId FROM users WHERE userId = ?",
+            [clientIdNumber]
+        );
+        if (!requester) {
+            await db.close();
+            return res.status(404).json({ error: "Requester not found" });
+        }
+
+        const receiver = await db.get(
+            "SELECT userId, userRole, userfacultyId FROM users WHERE userId = ?",
+            [ownerIdNumber]
+        );
+        if (!receiver) {
+            await db.close();
+            return res.status(404).json({ error: "Recipient not found" });
+        }
+
+        const receiverRole = String(receiver.userRole || "").toLowerCase();
+        if (!["admin", "staff", "professor"].includes(receiverRole)) {
+            await db.close();
+            return res.status(400).json({ error: "Recipient role is not allowed" });
+        }
+
+        if (Number(requester.userfacultyId) !== Number(receiver.userfacultyId)) {
+            await logForbiddenRequestAccess(req, {
+                db,
+                targetType: 'REQUEST',
+                targetId: 'submit',
+                details: `Cross-faculty request denied (${requester.userfacultyId} -> ${receiver.userfacultyId})`,
+                metadata: {
+                    requesterUserId: clientIdNumber,
+                    receiverUserId: ownerIdNumber,
+                    requesterFacultyId: requester.userfacultyId,
+                    receiverFacultyId: receiver.userfacultyId,
+                },
+            });
+            await db.close();
+            return res.status(403).json({ error: "Cannot send request outside your faculty" });
+        }
+
+        const fileExt = imagePrefixMatch[1].toLowerCase() === "jpeg" ? "jpg" : imagePrefixMatch[1].toLowerCase();
+        const fileName = `${normalizedDocId}-${Date.now()}.${fileExt}`;
+        const filePath = path.join(uploadDir, fileName);
+        await fs.promises.writeFile(filePath, base64Data, "base64");
+
+        const params = [
+            normalizedDocId,
+            new Date().toISOString(),
+            normalizedSubject,
+            normalizedMessage,
+            rtsp || camera || "none",
+            fileName,
+            ownerIdNumber,
+            clientIdNumber,
+            'Pending',
+            JSON.stringify(signatureArea || null),
+            nowIso(),
+            nowIso()
+        ];
+
+        const lifecycleSql = `
+            INSERT INTO requestSign (
+                requestNumber, requestDate, requestSubject, requestMessage,
+                requestRTSP, requestPicture, ownerRequestID,
+                clientRequestID, requestStatus, signatureArea,
+                createdAt, updatedAt
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `;
+
+        const result = await db.run(lifecycleSql, params);
+
+        broadcastRealtimeEvent("request.created", {
+            requestId: result.lastID,
+            requestNumber: normalizedDocId,
+            status: REQUEST_STATUS.PENDING,
+        });
+
+        const requesterProfile = await db.get(
+            "SELECT userEmail FROM users WHERE userId = ?",
+            [clientIdNumber]
+        );
+
+        await writeActivityLog(db, {
+            actorUserId: clientIdNumber,
+            actorEmail: requesterProfile?.userEmail || null,
+            action: "SIGN_REQUEST",
+            targetType: "REQUEST",
+            targetId: String(result.lastID),
+            targetDevice: rtsp || camera || "none",
+            ipAddress: getClientIp(req),
+            status: "SUCCESS",
+            details: `Created signature request ${normalizedDocId}`,
+            metadata: {
+                requestNumber: normalizedDocId,
+                ownerId: ownerIdNumber,
+                subject: normalizedSubject,
+            },
+        });
+
+        await db.close();
+
+        return res.status(200).json({
+            message: "Success",
+            requestId: result.lastID,
+            requestNumber: normalizedDocId
+        });
+    } catch (error) {
+        console.error("❌ submitRequest error:", error);
+        return res.status(500).json({ error: "Failed to submit request" });
+    }
 };
 const getPendingForProfessor = async (req, res) => {
     try {
         const { profId } = req.params;
         const db = await open({ filename: "./database/remote.db", driver: sqlite3.Database });
+        if (!canAccessUserScopedResource(req, profId)) {
+            await logForbiddenRequestAccess(req, {
+                db,
+                targetType: 'USER',
+                targetId: String(profId),
+                details: `Forbidden pending request access for owner ${profId}`,
+            });
+            await db.close();
+            return res.status(403).json({ error: "Forbidden" });
+        }
+
         const request = await db.get(
             "SELECT r.*, u.userName as studentName, u.userLastname as studentLastName FROM requestSign r JOIN users u ON r.clientRequestID = u.userId WHERE r.ownerRequestID = ? AND r.requestStatus = 'Pending' ORDER BY r.requestId DESC LIMIT 1",
             [profId]
@@ -168,11 +372,68 @@ const getPendingForProfessor = async (req, res) => {
 const updateStatus = async (req, res) => {
     try {
         const { id } = req.params;
-        const { status, expectedStatus, actorId, rejectReason } = req.body;
+        const { status, expectedStatus, rejectReason } = req.body;
+        const auth = getAuthContext(req);
+        if (!auth.userId) {
+            return res.status(401).json({ error: "Unauthorized" });
+        }
+
         console.log(`📩 Received Update: ID=${id}, Status=${status}`); // เพิ่มไว้เช็ค
         const db = await open({ filename: "./database/remote.db", driver: sqlite3.Database });
 
-        const transition = await transitionStatus(db, id, status, expectedStatus || null, actorId || null, rejectReason || null);
+        const scopedRequest = await db.get(
+            "SELECT ownerRequestID FROM requestSign WHERE requestId = ?",
+            [id]
+        );
+        if (!scopedRequest) {
+            await db.close();
+            return res.status(404).json({ error: "Request not found" });
+        }
+        if (!auth.isAdmin && Number(scopedRequest.ownerRequestID) !== auth.userId) {
+            await logForbiddenRequestAccess(req, {
+                db,
+                targetType: 'REQUEST',
+                targetId: String(id),
+                details: `Forbidden status update attempt for request ${id}`,
+                metadata: { ownerRequestID: scopedRequest.ownerRequestID, status },
+            });
+            await db.close();
+            return res.status(403).json({ error: "Forbidden" });
+        }
+
+        const transition = await transitionStatus(db, id, status, expectedStatus || null, auth.userId, rejectReason || null);
+
+        if (transition.ok && (String(status || '').toLowerCase() === 'signed' || String(status || '').toLowerCase() === 'rejected')) {
+            const requestRow = await db.get(
+                "SELECT requestNumber, requestRTSP, ownerRequestID FROM requestSign WHERE requestId = ?",
+                [id]
+            );
+            const actorUserId = auth.userId || Number(requestRow?.ownerRequestID) || null;
+            let actorEmail = null;
+            if (actorUserId) {
+                const actor = await db.get("SELECT userEmail FROM users WHERE userId = ?", [actorUserId]);
+                actorEmail = actor?.userEmail || null;
+            }
+
+            await writeActivityLog(db, {
+                actorUserId,
+                actorEmail,
+                action: "SIGN_REQUEST",
+                targetType: "REQUEST",
+                targetId: String(id),
+                targetDevice: requestRow?.requestRTSP || "none",
+                ipAddress: getClientIp(req),
+                status: String(status || '').toLowerCase() === 'signed' ? 'SUCCESS' : 'FAILED',
+                details: String(status || '').toLowerCase() === 'signed'
+                    ? `Signed request ${requestRow?.requestNumber || id}`
+                    : `Rejected request ${requestRow?.requestNumber || id}${rejectReason ? `: ${rejectReason}` : ''}`,
+                metadata: {
+                    transitionTo: status,
+                    expectedStatus: expectedStatus || null,
+                },
+            });
+        }
+
         await db.close();
 
         if (transition.ok) {
@@ -194,6 +455,26 @@ const confirmSignature = async (req, res) => {
         }
 
         const db = await open({ filename: "./database/remote.db", driver: sqlite3.Database });
+        const auth = getAuthContext(req);
+        const scopedRequest = await db.get(
+            "SELECT ownerRequestID FROM requestSign WHERE requestId = ?",
+            [requestId]
+        );
+        if (!scopedRequest) {
+            await db.close();
+            return res.status(404).json({ error: "Request not found" });
+        }
+        if (!auth.userId || (!auth.isAdmin && Number(scopedRequest.ownerRequestID) !== auth.userId)) {
+            await logForbiddenRequestAccess(req, {
+                db,
+                targetType: 'REQUEST',
+                targetId: String(requestId),
+                details: `Forbidden confirm-signature attempt for request ${requestId}`,
+                metadata: { ownerRequestID: scopedRequest.ownerRequestID },
+            });
+            await db.close();
+            return res.status(403).json({ error: "Forbidden" });
+        }
 
         const savePoints = await db.run(
             "UPDATE requestSign SET signatureCoordinates = ?, updatedAt = ?, stateVersion = COALESCE(stateVersion, 0) + 1 WHERE requestId = ?",
@@ -205,6 +486,33 @@ const confirmSignature = async (req, res) => {
         }
 
         const transition = await transitionStatus(db, requestId, REQUEST_STATUS.SIGNED);
+        if (transition.ok) {
+            const requestRow = await db.get(
+                "SELECT requestNumber, requestRTSP, ownerRequestID FROM requestSign WHERE requestId = ?",
+                [requestId]
+            );
+            const actorUserId = auth.userId || Number(requestRow?.ownerRequestID) || null;
+            let actorEmail = null;
+            if (actorUserId) {
+                const actor = await db.get("SELECT userEmail FROM users WHERE userId = ?", [actorUserId]);
+                actorEmail = actor?.userEmail || null;
+            }
+
+            await writeActivityLog(db, {
+                actorUserId,
+                actorEmail,
+                action: "SIGN_REQUEST",
+                targetType: "REQUEST",
+                targetId: String(requestId),
+                targetDevice: requestRow?.requestRTSP || "none",
+                ipAddress: getClientIp(req),
+                status: "SUCCESS",
+                details: `Signed request ${requestRow?.requestNumber || requestId}`,
+                metadata: {
+                    source: "confirmSignature",
+                },
+            });
+        }
         await db.close();
 
         if (!transition.ok) {
@@ -242,13 +550,33 @@ const getRequestState = async (req, res) => {
     try {
         const { id } = req.params;
         const db = await open({ filename: "./database/remote.db", driver: sqlite3.Database });
-        const row = await db.get("SELECT requestId, requestNumber, requestStatus, stateVersion, createdAt, updatedAt, claimedAt, startedAt, completedAt, claimedBy FROM requestSign WHERE requestId = ?", [id]);
-        await db.close();
-
+        const row = await db.get(
+            "SELECT requestId, requestNumber, requestStatus, stateVersion, createdAt, updatedAt, claimedAt, startedAt, completedAt, claimedBy, ownerRequestID, clientRequestID FROM requestSign WHERE requestId = ?",
+            [id]
+        );
         if (!row) {
+            await db.close();
             return res.status(404).json({ error: "Request not found" });
         }
 
+        const auth = getAuthContext(req);
+        const isParticipant = Number(row.ownerRequestID) === auth.userId || Number(row.clientRequestID) === auth.userId;
+        if (!auth.userId || (!auth.isAdmin && !isParticipant)) {
+            await logForbiddenRequestAccess(req, {
+                db,
+                targetType: 'REQUEST',
+                targetId: String(id),
+                details: `Forbidden request state access for request ${id}`,
+                metadata: { ownerRequestID: row.ownerRequestID, clientRequestID: row.clientRequestID },
+            });
+            await db.close();
+            return res.status(403).json({ error: "Forbidden" });
+        }
+
+        delete row.ownerRequestID;
+        delete row.clientRequestID;
+
+        await db.close();
         res.json(row);
     } catch (error) {
         console.error("Error in getRequestState:", error);
@@ -259,13 +587,24 @@ const getRequestState = async (req, res) => {
 const transitionRequest = async (req, res) => {
     try {
         const { id } = req.params;
-        const { toStatus, expectedStatus, actorId, rejectReason } = req.body;
+        const { toStatus, expectedStatus, rejectReason } = req.body;
+        const auth = getAuthContext(req);
+        if (!auth.isAdmin) {
+            await logForbiddenRequestAccess(req, {
+                targetType: 'REQUEST',
+                targetId: String(id),
+                details: `Non-admin transition attempt for request ${id}`,
+                metadata: { toStatus, expectedStatus: expectedStatus || null },
+            });
+            return res.status(403).json({ error: "Admin access required" });
+        }
+
         if (!toStatus) {
             return res.status(400).json({ error: "toStatus is required" });
         }
 
         const db = await open({ filename: "./database/remote.db", driver: sqlite3.Database });
-        const transition = await transitionStatus(db, id, toStatus, expectedStatus || null, actorId || null, rejectReason || null);
+        const transition = await transitionStatus(db, id, toStatus, expectedStatus || null, auth.userId, rejectReason || null);
         await db.close();
 
         if (!transition.ok) {
@@ -282,9 +621,21 @@ const transitionRequest = async (req, res) => {
 const claimNextRequest = async (req, res) => {
     let db;
     try {
-        const { ownerRequestID, claimerId } = req.body;
-        if (!ownerRequestID) {
+        const auth = getAuthContext(req);
+        const ownerRequestIdNumber = Number(req.body?.ownerRequestID);
+        if (!Number.isInteger(ownerRequestIdNumber) || ownerRequestIdNumber <= 0) {
             return res.status(400).json({ error: "ownerRequestID is required" });
+        }
+        if (!auth.userId) {
+            return res.status(401).json({ error: "Unauthorized" });
+        }
+        if (!auth.isAdmin && auth.userId !== ownerRequestIdNumber) {
+            await logForbiddenRequestAccess(req, {
+                targetType: 'USER',
+                targetId: String(ownerRequestIdNumber),
+                details: `Forbidden claim-next attempt for owner ${ownerRequestIdNumber}`,
+            });
+            return res.status(403).json({ error: "Forbidden" });
         }
 
         db = await open({ filename: "./database/remote.db", driver: sqlite3.Database });
@@ -292,7 +643,7 @@ const claimNextRequest = async (req, res) => {
 
         const next = await db.get(
             "SELECT requestId FROM requestSign WHERE ownerRequestID = ? AND requestStatus = ? ORDER BY requestId ASC LIMIT 1",
-            [ownerRequestID, REQUEST_STATUS.PENDING]
+            [ownerRequestIdNumber, REQUEST_STATUS.PENDING]
         );
 
         if (!next) {
@@ -301,7 +652,7 @@ const claimNextRequest = async (req, res) => {
             return res.json(null);
         }
 
-        const patch = buildTransitionPatch(REQUEST_STATUS.CLAIMED, claimerId || null);
+        const patch = buildTransitionPatch(REQUEST_STATUS.CLAIMED, auth.userId);
         const claimSql = `UPDATE requestSign SET ${patch.updates.join(", ")} WHERE requestId = ? AND requestStatus = ?`;
         const claimResult = await db.run(claimSql, [...patch.params, next.requestId, REQUEST_STATUS.PENDING]);
 
@@ -336,10 +687,21 @@ const claimNextRequest = async (req, res) => {
 const getHistoryByProfessor = async (req, res) => {
     try {
         const { profId } = req.params;
+        const db = await open({ filename: "./database/remote.db", driver: sqlite3.Database });
+        if (!canAccessUserScopedResource(req, profId)) {
+            await logForbiddenRequestAccess(req, {
+                db,
+                targetType: 'USER',
+                targetId: String(profId),
+                details: `Forbidden history access for owner ${profId}`,
+            });
+            await db.close();
+            return res.status(403).json({ error: "Forbidden" });
+        }
+
         const rawLimit = Number(req.query.limit);
         const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(Math.floor(rawLimit), 200) : 100;
 
-        const db = await open({ filename: "./database/remote.db", driver: sqlite3.Database });
         const rows = await db.all(
             `
             SELECT
@@ -380,6 +742,68 @@ const getHistoryByProfessor = async (req, res) => {
         res.json(rows || []);
     } catch (error) {
         console.error("Error in getHistoryByProfessor:", error);
+        res.status(500).json({ error: "DB Error" });
+    }
+};
+
+const getHistoryByRequester = async (req, res) => {
+    try {
+        const { clientId } = req.params;
+        const db = await open({ filename: "./database/remote.db", driver: sqlite3.Database });
+        if (!canAccessUserScopedResource(req, clientId)) {
+            await logForbiddenRequestAccess(req, {
+                db,
+                targetType: 'USER',
+                targetId: String(clientId),
+                details: `Forbidden history access for requester ${clientId}`,
+            });
+            await db.close();
+            return res.status(403).json({ error: "Forbidden" });
+        }
+
+        const rawLimit = Number(req.query.limit);
+        const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(Math.floor(rawLimit), 200) : 100;
+
+        const rows = await db.all(
+            `
+            SELECT
+                r.requestId,
+                r.requestNumber,
+                r.requestSubject,
+                r.requestMessage,
+                r.requestDate,
+                r.requestStatus,
+                r.requestRTSP,
+                r.requestPicture,
+                r.rejectReason,
+                r.signatureCoordinates,
+                r.ownerRequestID,
+                r.clientRequestID,
+                r.claimedBy,
+                r.stateVersion,
+                r.createdAt,
+                r.updatedAt,
+                r.claimedAt,
+                r.startedAt,
+                r.completedAt,
+                u.userName as studentName,
+                u.userLastname as studentLastName,
+                p.userName as ownerName,
+                p.userLastname as ownerLastName
+            FROM requestSign r
+            LEFT JOIN users u ON r.clientRequestID = u.userId
+            LEFT JOIN users p ON r.ownerRequestID = p.userId
+            WHERE r.clientRequestID = ?
+            ORDER BY r.requestId DESC
+            LIMIT ?
+            `,
+            [clientId, limit]
+        );
+        await db.close();
+
+        res.json(rows || []);
+    } catch (error) {
+        console.error("Error in getHistoryByRequester:", error);
         res.status(500).json({ error: "DB Error" });
     }
 };
@@ -552,6 +976,7 @@ export default {
     transitionRequest,
     claimNextRequest,
     getHistoryByProfessor,
+    getHistoryByRequester,
     claimNextCncTask,
     reportCncTaskResult
 };

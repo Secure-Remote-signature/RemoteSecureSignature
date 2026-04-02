@@ -49,6 +49,91 @@ type LogItem = {
   rejectReason: string;
 };
 
+type SignaturePoint = { x: number; y: number };
+type SignaturePath = SignaturePoint[];
+
+const A4_WIDTH_PX = 2480;
+const A4_HEIGHT_PX = 3508;
+
+function parseSignaturePaths(raw: string | null): SignaturePath[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .filter((path) => Array.isArray(path))
+      .map((path) =>
+        path
+          .map((point) => ({
+            x: Number(point?.x),
+            y: Number(point?.y),
+          }))
+          .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
+      )
+      .filter((path) => path.length >= 2);
+  } catch {
+    return [];
+  }
+}
+
+function drawSignaturePaths(
+  ctx: CanvasRenderingContext2D,
+  paths: SignaturePath[],
+  scale: number,
+  options?: { showGuideBox?: boolean; lineWidth?: number; signatureColor?: string }
+) {
+  if (paths.length === 0) return;
+
+  const lineWidth = options?.lineWidth ?? 5;
+  const signatureColor = options?.signatureColor ?? '#1D4ED8';
+  const showGuideBox = options?.showGuideBox ?? true;
+
+  ctx.lineWidth = lineWidth;
+  ctx.strokeStyle = signatureColor;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+
+  for (const path of paths) {
+    if (path.length < 2) continue;
+
+    ctx.beginPath();
+    ctx.moveTo(path[0].x * scale, path[0].y * scale);
+    minX = Math.min(minX, path[0].x * scale);
+    minY = Math.min(minY, path[0].y * scale);
+    maxX = Math.max(maxX, path[0].x * scale);
+    maxY = Math.max(maxY, path[0].y * scale);
+
+    for (let i = 1; i < path.length; i += 1) {
+      const point = path[i];
+      const px = point.x * scale;
+      const py = point.y * scale;
+      ctx.lineTo(px, py);
+      minX = Math.min(minX, px);
+      minY = Math.min(minY, py);
+      maxX = Math.max(maxX, px);
+      maxY = Math.max(maxY, py);
+    }
+
+    ctx.stroke();
+  }
+
+  if (showGuideBox && Number.isFinite(minX) && Number.isFinite(minY) && Number.isFinite(maxX) && Number.isFinite(maxY)) {
+    const pad = 14 * scale;
+    ctx.save();
+    ctx.setLineDash([12 * scale, 8 * scale]);
+    ctx.lineWidth = Math.max(2 * scale, 1.5);
+    ctx.strokeStyle = '#EF4444';
+    ctx.strokeRect(minX - pad, minY - pad, (maxX - minX) + pad * 2, (maxY - minY) + pad * 2);
+    ctx.restore();
+  }
+}
+
 function mapStatusToUi(status?: string): UiStatus {
   const normalized = (status || '').toLowerCase();
   if (normalized === 'signed') return 'success';
@@ -167,7 +252,11 @@ export default function HistoryLogPage() {
     }
   };
 
-  const drawPreviewToCanvas = async (canvas: HTMLCanvasElement, log: LogItem) => {
+  const drawPreviewToCanvas = async (
+    canvas: HTMLCanvasElement,
+    log: LogItem,
+    options?: { maxWidth?: number; maxHeight?: number; showGuideBox?: boolean; lineWidth?: number; signatureColor?: string }
+  ) => {
     if (!log.requestPicture) {
       throw new Error('ไม่พบไฟล์เอกสาร');
     }
@@ -187,63 +276,26 @@ export default function HistoryLogPage() {
       throw new Error('ไม่สามารถแสดงพรีวิวได้');
     }
 
-    canvas.width = img.width;
-    canvas.height = img.height;
+    const maxWidth = options?.maxWidth;
+    const maxHeight = options?.maxHeight;
+    const widthScale = maxWidth ? maxWidth / A4_WIDTH_PX : Number.POSITIVE_INFINITY;
+    const heightScale = maxHeight ? maxHeight / A4_HEIGHT_PX : Number.POSITIVE_INFINITY;
+    const fitScale = Math.min(widthScale, heightScale);
+    const scale = Number.isFinite(fitScale) ? Math.min(fitScale, 1) : 1;
+
+    canvas.width = Math.max(1, Math.round(A4_WIDTH_PX * scale));
+    canvas.height = Math.max(1, Math.round(A4_HEIGHT_PX * scale));
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(img, 0, 0);
 
-    let paths: Array<Array<{ x: number; y: number }>> = [];
-    if (log.signatureCoordinates) {
-      try {
-        const parsed = JSON.parse(log.signatureCoordinates);
-        if (Array.isArray(parsed)) {
-          paths = parsed;
-        }
-      } catch {
-        paths = [];
-      }
-    }
+    // Match Tkinter preview pipeline by forcing document render onto canonical A4.
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-    if (paths.length > 0) {
-      ctx.lineWidth = 5;
-      ctx.strokeStyle = '#1D4ED8';
-      ctx.lineCap = 'round';
-      let minX = Number.POSITIVE_INFINITY;
-      let minY = Number.POSITIVE_INFINITY;
-      let maxX = Number.NEGATIVE_INFINITY;
-      let maxY = Number.NEGATIVE_INFINITY;
-
-      for (const path of paths) {
-        if (!Array.isArray(path) || path.length < 2) continue;
-        ctx.beginPath();
-        const first = path[0];
-        ctx.moveTo(Number(first.x), Number(first.y));
-        minX = Math.min(minX, Number(first.x));
-        minY = Math.min(minY, Number(first.y));
-        maxX = Math.max(maxX, Number(first.x));
-        maxY = Math.max(maxY, Number(first.y));
-
-        for (let i = 1; i < path.length; i += 1) {
-          const p = path[i];
-          ctx.lineTo(Number(p.x), Number(p.y));
-          minX = Math.min(minX, Number(p.x));
-          minY = Math.min(minY, Number(p.y));
-          maxX = Math.max(maxX, Number(p.x));
-          maxY = Math.max(maxY, Number(p.y));
-        }
-        ctx.stroke();
-      }
-
-      if (Number.isFinite(minX) && Number.isFinite(minY) && Number.isFinite(maxX) && Number.isFinite(maxY)) {
-        const pad = 14;
-        ctx.save();
-        ctx.setLineDash([12, 8]);
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = '#EF4444';
-        ctx.strokeRect(minX - pad, minY - pad, (maxX - minX) + pad * 2, (maxY - minY) + pad * 2);
-        ctx.restore();
-      }
-    }
+    const paths = parseSignaturePaths(log.signatureCoordinates);
+    drawSignaturePaths(ctx, paths, scale, {
+      showGuideBox: options?.showGuideBox,
+      lineWidth: options?.lineWidth,
+      signatureColor: options?.signatureColor,
+    });
   };
 
   const SignedPreviewModal = ({ log, onClose }: { log: LogItem; onClose: () => void }) => {
@@ -276,8 +328,14 @@ export default function HistoryLogPage() {
     }, [canvasRef, log]);
 
     return (
-      <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden">
+      <div
+        className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
+        onClick={onClose}
+      >
+        <div
+          className="bg-white rounded-2xl w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
           <div className="px-4 py-3 border-b flex items-center justify-between">
             <div className="text-sm pi:text-base text-gray-700">
               {log.docName} | สถานะ: <span className="font-bold">{log.rawStatus}</span>

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 import os
 import requests
-from app_config import build_api_url
+from app_config import build_api_url, build_auth_headers
 import json
 from io import BytesIO
 from PIL import Image, ImageTk, ImageDraw, ImageOps
@@ -102,7 +102,7 @@ class HistoryPage(tk.Frame):
 
         try:
             url = build_api_url(f"/srs/request/history/{prof_id}?limit=100")
-            response = requests.get(url, timeout=5)
+            response = requests.get(url, timeout=5, headers=build_auth_headers(self.controller))
             if response.status_code != 200:
                 raise Exception(f"HTTP {response.status_code}")
 

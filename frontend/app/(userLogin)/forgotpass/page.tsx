@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ArrowLeft, Loader2, CheckCircle2 } from 'lucide-react';
 import "@/app/styles/components.css";
 import { useRouter } from 'next/navigation';
@@ -12,20 +12,53 @@ export default function ForgotPass() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [cooldownSec, setCooldownSec] = useState(0);
+  const [otpExpirySec, setOtpExpirySec] = useState(0);
+
+  useEffect(() => {
+    if (cooldownSec <= 0) return;
+    const timer = window.setTimeout(() => setCooldownSec((prev) => Math.max(prev - 1, 0)), 1000);
+    return () => window.clearTimeout(timer);
+  }, [cooldownSec]);
+
+  useEffect(() => {
+    if (otpExpirySec <= 0) return;
+    const timer = window.setTimeout(() => setOtpExpirySec((prev) => Math.max(prev - 1, 0)), 1000);
+    return () => window.clearTimeout(timer);
+  }, [otpExpirySec]);
+
+  const requestOtp = async (targetEmail: string) => {
+    const response = await api.post(`${process.env.NEXT_PUBLIC_API_URL}/srs/user/request-otp`, {
+      email: targetEmail,
+    });
+    const payload = response?.data || {};
+    setCooldownSec(Number(payload.cooldownSec || 60));
+    setOtpExpirySec(Number(payload.expiresInSec || 300));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
+
+    const normalizedEmail = email.trim();
+    if (!normalizedEmail) {
+      setErrorMsg('กรุณากรอกอีเมล');
+      return;
+    }
+
     setIsLoading(true);
 
     try {
-      await api.post(`${process.env.NEXT_PUBLIC_API_URL}/srs/user/request-otp`, {
-        email,
-      });
+      await requestOtp(normalizedEmail);
 
+      setEmail(normalizedEmail);
       setIsSuccess(true);
     } catch (error: unknown) {
       if (isAxiosError(error) && error.response) {
+        const retryAfter = Number(error.response.data?.retryAfterSec || 0);
+        if (retryAfter > 0) {
+          setCooldownSec(retryAfter);
+        }
         setErrorMsg(error.response.data?.error || "ส่ง OTP ไม่สำเร็จ");
       } else {
         setErrorMsg("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้");
@@ -62,6 +95,34 @@ export default function ForgotPass() {
     flex items-center justify-center gap-2
     disabled:opacity-70 disabled:cursor-not-allowed
   `;
+
+  const formatCountdown = (sec: number) => {
+    const mins = Math.floor(sec / 60);
+    const secs = sec % 60;
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  };
+
+  const handleResendOtp = async () => {
+    if (!email || cooldownSec > 0) return;
+
+    setErrorMsg('');
+    setIsLoading(true);
+    try {
+      await requestOtp(email);
+    } catch (error: unknown) {
+      if (isAxiosError(error) && error.response) {
+        const retryAfter = Number(error.response.data?.retryAfterSec || 0);
+        if (retryAfter > 0) {
+          setCooldownSec(retryAfter);
+        }
+        setErrorMsg(error.response.data?.error || 'ส่ง OTP ไม่สำเร็จ');
+      } else {
+        setErrorMsg('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen relative flex items-center justify-center">
@@ -130,12 +191,29 @@ export default function ForgotPass() {
             </h1>
             
             <p className="text-gray-500 text-sm 2xl:text-base mb-6">
-              เราได้ส่งลิงก์สำหรับตั้งรหัสผ่านใหม่ไปที่ <br/>
+              เราได้ส่งรหัส OTP สำหรับตั้งรหัสผ่านใหม่ไปที่ <br/>
               <span className="font-semibold text-gray-800 break-all">{email}</span>
             </p>
 
+            <div className="w-full text-center mb-5 text-sm text-gray-600 space-y-1">
+              {otpExpirySec > 0 ? (
+                <p>OTP จะหมดอายุใน {formatCountdown(otpExpirySec)}</p>
+              ) : (
+                <p className="text-red-500">OTP หมดอายุแล้ว กรุณาขอรหัสใหม่</p>
+              )}
+              <button
+                type="button"
+                onClick={handleResendOtp}
+                disabled={isLoading || cooldownSec > 0}
+                className="text-[#4338CA] font-semibold disabled:text-gray-400"
+              >
+                {cooldownSec > 0 ? `ส่ง OTP ใหม่ได้ใน ${cooldownSec}s` : 'ส่ง OTP ใหม่'}
+              </button>
+              {errorMsg && <p className="text-red-500">{errorMsg}</p>}
+            </div>
+
             <button 
-              onClick={() => router.push(`/resetpass?email=${encodeURIComponent(email)}`)} 
+              onClick={() => router.push(`/resetpass?email=${encodeURIComponent(email)}&expiry=${otpExpirySec || 300}&cooldown=${cooldownSec || 0}`)} 
               className={primaryBtnStyle}
             >
               ไปตั้งรหัสผ่านใหม่

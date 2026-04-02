@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import messagebox
 import requests
-from app_config import build_api_url
+from app_config import build_api_url, build_auth_headers
 
 class PinConfirmPage(tk.Frame):
     def __init__(self, parent, controller):
@@ -60,6 +60,17 @@ class PinConfirmPage(tk.Frame):
             bg="#FFFFFF", fg="#64748B", bd=0, cursor="hand2",
             command=lambda: controller.show_frame("SignaturePage")).pack(pady=20)
 
+        tk.Button(
+            container,
+            text="Forgot PIN?",
+            font=("Arial", 10, "underline"),
+            bg="#FFFFFF",
+            fg="#4338CA",
+            bd=0,
+            cursor="hand2",
+            command=self.go_to_forgot_pin,
+        ).pack()
+
     def on_button_click(self, key):
         if key == "CLR":
             self.pin_code = ""
@@ -95,6 +106,7 @@ class PinConfirmPage(tk.Frame):
                 build_api_url("/srs/user/verify-pin"),
                 json={"userId": user_id, "userPin": self.pin_code},
                 timeout=5,
+                headers=build_auth_headers(self.controller),
             )
         except Exception as exc:
             messagebox.showerror("Connection Error", f"ไม่สามารถตรวจสอบ PIN กับเซิร์ฟเวอร์ได้: {exc}")
@@ -124,3 +136,6 @@ class PinConfirmPage(tk.Frame):
 
     def set_request_data(self, data):
         self.pending_payload = data or None
+
+    def go_to_forgot_pin(self):
+        self.controller.show_frame("ForgotPinPage", data={"pending_payload": self.pending_payload})

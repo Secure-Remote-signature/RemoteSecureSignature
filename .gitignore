@@ -26,6 +26,7 @@ frontend/lib/
 frontend/build/
 backend/build/
 backend/dist/
+backend/uploads/
 
 # misc
 .DS_Store
@@ -51,3 +52,5 @@ frontend/next-env.d.ts
 
 __pycache__/
 *.pyc
+
+tkinter/userSigning/signature_tasks

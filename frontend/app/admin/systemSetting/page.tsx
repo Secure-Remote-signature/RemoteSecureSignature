@@ -1,0 +1,213 @@
+"use client";
+
+import React, { useEffect, useState } from "react";
+import api, { isAxiosError } from "@/app/lib/api";
+
+const initialSettings = {
+  maintenanceMode: false,
+  systemNotice: "ระบบทำงานปกติ",
+  
+  defaultDrawSpeed: 3000,
+  defaultPenUpAngle: 40,
+  defaultPenDownAngle: 90,
+  autoHomeAfterJob: true,
+
+  sessionTimeoutMinutes: 30,
+  maxLoginAttempts: 5,
+};
+
+export default function SystemSettingsPage() {
+  const [settings, setSettings] = useState(initialSettings);
+  const [loading, setLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        setLoading(true);
+        setErrorMsg(null);
+        const res = await api.get(`${process.env.NEXT_PUBLIC_API_URL}/srs/admin/system-settings`);
+        setSettings({ ...initialSettings, ...(res.data?.settings || {}) });
+      } catch (error: unknown) {
+        if (isAxiosError(error) && error.response) {
+          setErrorMsg(error.response.data?.error || "โหลดการตั้งค่าไม่สำเร็จ");
+        } else {
+          setErrorMsg("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้");
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void loadSettings();
+  }, []);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value, type } = e.target;
+    
+    if (type === 'checkbox') {
+      const checked = (e.target as HTMLInputElement).checked;
+      setSettings(prev => ({ ...prev, [name]: checked }));
+    } else {
+      setSettings(prev => ({ ...prev, [name]: value }));
+    }
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
+    setSaveMessage(null);
+
+    try {
+      setErrorMsg(null);
+      const res = await api.put(`${process.env.NEXT_PUBLIC_API_URL}/srs/admin/system-settings`, settings);
+      setSettings({ ...initialSettings, ...(res.data?.settings || settings) });
+      setSaveMessage("บันทึกการตั้งค่าระบบเรียบร้อยแล้ว (การตั้งค่าฮาร์ดแวร์จะมีผลกับคิวงานถัดไป)");
+    } catch (error: unknown) {
+      if (isAxiosError(error) && error.response) {
+        setErrorMsg(error.response.data?.error || "บันทึกการตั้งค่าไม่สำเร็จ");
+      } else {
+        setErrorMsg("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้");
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <section className="min-h-full bg-[#F8FAFC] p-6 pi:p-8">
+      <div className="max-w-4xl mx-auto space-y-6">
+        
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">ตั้งค่าระบบ (System Settings)</h1>
+          <p className="text-sm text-gray-500 mt-1">จัดการค่าเริ่มต้นของฮาร์ดแวร์, ความปลอดภัย, และโหมดซ่อมบำรุง</p>
+        </div>
+
+        <form onSubmit={handleSave} className="space-y-6">
+          {loading && (
+            <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600">
+              กำลังโหลดการตั้งค่าระบบ...
+            </div>
+          )}
+
+          {errorMsg && (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              {errorMsg}
+            </div>
+          )}
+          
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+              <h2 className="text-lg font-bold text-gray-800">ระบบส่วนกลาง (Global Settings)</h2>
+            </div>
+            <div className="p-6 space-y-5">
+              
+              <div className={`p-4 rounded-xl border ${settings.maintenanceMode ? 'bg-rose-50 border-rose-200' : 'bg-gray-50 border-gray-100'} transition-colors`}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className={`text-sm font-bold ${settings.maintenanceMode ? 'text-rose-700' : 'text-gray-800'}`}>
+                      โหมดปิดปรับปรุง (Maintenance Mode)
+                    </p>
+                    <p className={`text-xs mt-0.5 ${settings.maintenanceMode ? 'text-rose-500' : 'text-gray-500'}`}>
+                      หากเปิดโหมดนี้ หน้าเว็บฝั่งผู้ใช้งาน (Client) จะหยุดรับคำสั่งเซ็นใหม่ทั้งหมด
+                    </p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" name="maintenanceMode" checked={settings.maintenanceMode} onChange={handleChange} className="sr-only peer" />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-rose-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-600"></div>
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1.5">ข้อความแจ้งเตือนหน้าเว็บ (System Notice)</label>
+                <input 
+                  type="text" 
+                  name="systemNotice" 
+                  value={settings.systemNotice} 
+                  onChange={handleChange} 
+                  className="w-full border text-Slate-gray border-gray-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm"
+                  placeholder="เช่น: ระบบกำลังปิดปรับปรุงเซิร์ฟเวอร์ กรุณาใช้งานหลัง 12:00 น."
+                />
+              </div>
+            </div>
+          </div>
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+              <h2 className="text-lg font-bold text-gray-800">ความปลอดภัย (Security Parameters)</h2>
+            </div>
+            <div className="p-6 space-y-5">
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1.5">เวลาหมดอายุ Session (Session Timeout)</label>
+                  <div className="relative">
+                    <input 
+                      type="number" 
+                      name="sessionTimeoutMinutes" 
+                      value={settings.sessionTimeoutMinutes} 
+                      onChange={handleChange} 
+                      className="w-full border text-Slate-gray border-gray-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm"
+                    />
+                    <span className="absolute right-4 top-2.5 text-xs text-gray-400 font-bold">นาที</span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1.5">จำกัดจำนวนล็อกอินผิด (Max Login Attempts)</label>
+                  <div className="relative">
+                    <input 
+                      type="number" 
+                      name="maxLoginAttempts" 
+                      value={settings.maxLoginAttempts} 
+                      onChange={handleChange} 
+                      className="w-full border text-Slate-gray border-gray-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm"
+                    />
+                    <span className="absolute right-4 top-2.5 text-xs text-gray-400 font-bold">ครั้ง</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-gray-200 space-y-4">
+            {saveMessage && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+                {saveMessage}
+              </div>
+            )}
+            <div className="flex justify-end gap-4">
+            <button 
+              type="button" 
+              onClick={() => {
+                setSettings(initialSettings);
+                setSaveMessage(null);
+              }}
+              className="px-6 py-3 rounded-xl text-gray-600 hover:bg-gray-100 font-bold transition-colors text-sm"
+            >
+              ยกเลิกการเปลี่ยนแปลง
+            </button>
+            <button 
+              type="submit" 
+              disabled={isSaving}
+              className="px-8 py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 font-bold transition-colors shadow-md text-sm flex items-center gap-2 disabled:opacity-70"
+            >
+              {isSaving ? (
+                <>
+                  <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                  กำลังบันทึก...
+                </>
+              ) : (
+                "บันทึกการตั้งค่า"
+              )}
+            </button>
+            </div>
+          </div>
+
+        </form>
+      </div>
+    </section>
+  );
+}

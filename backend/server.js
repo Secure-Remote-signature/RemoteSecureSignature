@@ -3,11 +3,15 @@ import cors from "cors";
 import fs from "fs"; 
 import path from "path";
 import { fileURLToPath } from 'url'; 
+import http from "http";
 
 import initializeDatabase from "./config/init.js"; 
 import userService from "./router/user.js";
 import requestService from "./router/request.js";
 import machineService from "./router/machine.js";
+import adminService from "./router/admin.js";
+import { initializeRealtimeServer } from "./lib/realtime.js";
+import { startMachineStatusHook } from "./lib/machineStatusHook.js";
 
 // Setup __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -19,7 +23,7 @@ const port = 5000;
 // 1. Middleware
 app.use(cors({
     origin: "*",
-    methods: ["GET", "POST", "PUT", "DELETE"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"]
 }));
 app.use(express.json({ limit: '50mb' })); 
@@ -35,6 +39,7 @@ if (!fs.existsSync(uploadDir)) {
 app.use("/srs/user", userService);
 app.use("/srs/request", requestService);
 app.use("/srs/machine", machineService);
+app.use("/srs/admin", adminService);
 app.use('/uploads', express.static(uploadDir)); 
 
 app.get("/srs", (req, res) => {
@@ -46,7 +51,12 @@ async function startApp() {
     try {
         console.log("Setting up database...");
         await initializeDatabase();
-        const server = app.listen(port, () => {
+
+        const server = http.createServer(app);
+        initializeRealtimeServer(server);
+        startMachineStatusHook();
+
+        server.listen(port, () => {
             console.log(`Secure Remote Signature Backend running on port ${port}`);
         });
 
