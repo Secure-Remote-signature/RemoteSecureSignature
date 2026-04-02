@@ -5,23 +5,38 @@ class IncomingAlert(tk.Toplevel):
     def __init__(self, parent, data, on_accept, on_reject, on_view=None):
         super().__init__(parent)
         self.title("New Request")
-        self.geometry("450x420+500+200")
+        window_width = 450
+        window_height = 420
+        self.update_idletasks()
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        
+        x_pos = int((screen_width / 2) - (window_width / 2))
+        y_pos = int((screen_height / 2) - (window_height / 2))
+        
+        self.geometry(f"{window_width}x{window_height}+{x_pos}+{y_pos}")
+        
         self.overrideredirect(True)
         self.attributes("-topmost", True)
         self.configure(bg="#FFFFFF")
         
-        # Store callbacks
         self.on_accept = on_accept
         self.on_reject = on_reject
         self.on_view = on_view if on_view is not None else on_accept
 
-        # --- Header ---
         header = tk.Frame(self, bg="#5D5CDE", height=50)
         header.pack(fill="x")
-        tk.Label(header, text="มีเอกสารรอการลงนาม!!", font=("Arial", 14, "bold"), 
-            bg="#5D5CDE", fg="white").pack(pady=10)
+        
+        header_label = tk.Label(header, text="มีเอกสารรอการลงนาม!!", font=("Arial", 14, "bold"), 
+            bg="#5D5CDE", fg="white")
+        header_label.pack(pady=10)
 
-        # --- Content Container ---
+        header.bind("<ButtonPress-1>", self._start_drag)
+        header_label.bind("<ButtonPress-1>", self._start_drag)
+        
+        header.bind("<B1-Motion>", self._on_drag)
+        header_label.bind("<B1-Motion>", self._on_drag)
+
         content = tk.Frame(self, bg="#FFFFFF", padx=20, pady=15)
         content.pack(fill="both", expand=True)
 
@@ -61,6 +76,15 @@ class IncomingAlert(tk.Toplevel):
             relief="flat", width=18, pady=8, cursor="hand2",
             command=self._on_reject_click).pack(side="left", expand=True, padx=5)
     
+    def _start_drag(self, event):
+        self._drag_start_x = event.x
+        self._drag_start_y = event.y
+
+    def _on_drag(self, event):
+        x = self.winfo_x() - self._drag_start_x + event.x
+        y = self.winfo_y() - self._drag_start_y + event.y
+        self.geometry(f"+{x}+{y}")
+        
     def _on_accept_click(self):
         self.destroy()
         self.on_accept()
