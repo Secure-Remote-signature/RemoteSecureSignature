@@ -71,6 +71,7 @@ class ExecutionPage(tk.Frame):
         self._start_mqtt_status_listener()
         self._start_backend_status_polling()
         self._schedule_status_queue_drain()
+        self.after(1000, self.refresh_camera_view)
 
     load_dotenv()
 
@@ -651,7 +652,7 @@ class ExecutionPage(tk.Frame):
             self._stop_camera_stream(show_placeholder=False)
 
     def _get_rtsp_url(self):
-        rtsp = os.getenv("TK_EXEC_RTSP_URL")
+        rtsp = self.current_request.get("requestRTSP") if self.current_request else None
         rtsp = str(rtsp or "").strip()
         if not rtsp or rtsp.lower() == "none":
             return None
