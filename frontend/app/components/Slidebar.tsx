@@ -32,7 +32,6 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         { name: 'จัดการผู้ใช้', href: '/admin/usersManagement', icon: Users },
         { name: 'ประวัติการทำงาน', href: '/admin/auditLog', icon: History },
         { name: 'จัดการเครื่องจักร', href: '/admin/cncManagement', icon: FilePen },
-        { name: 'การตั้งค่าระบบ', href: '/admin/systemSetting', icon: Settings },
       ];
     }
 
