@@ -28,6 +28,27 @@ class DocumentReviewPage(tk.Frame):
 
         self.setup_ui()
 
+    def _bind_scroll_events(self):
+        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+        self.canvas.bind_all("<Button-4>", self._on_mousewheel)
+        self.canvas.bind_all("<Button-5>", self._on_mousewheel)
+
+    def _unbind_scroll_events(self):
+        self.canvas.unbind_all("<MouseWheel>")
+        self.canvas.unbind_all("<Button-4>")
+        self.canvas.unbind_all("<Button-5>")
+
+    def _on_mousewheel(self, event):
+        if event.delta:
+            step = -1 if event.delta > 0 else 1
+            self.canvas.yview_scroll(step, "units")
+            return
+
+        if getattr(event, "num", None) == 4:
+            self.canvas.yview_scroll(-1, "units")
+        elif getattr(event, "num", None) == 5:
+            self.canvas.yview_scroll(1, "units")
+
     def get_a4_px_size(self):
         width_px = round(self.A4_WIDTH_MM * self.A4_DPI / 25.4)
         height_px = round(self.A4_HEIGHT_MM * self.A4_DPI / 25.4)
@@ -154,12 +175,21 @@ class DocumentReviewPage(tk.Frame):
             command=self.go_to_signature,
         ).pack(side="right", pady=10)
 
-        self.canvas = tk.Canvas(self, bg="#000000", highlightthickness=0)
-        self.canvas.pack(fill=tk.BOTH, expand=True, padx=12, pady=12)
+        canvas_wrap = tk.Frame(self, bg="#F9FAFB")
+        canvas_wrap.pack(fill=tk.BOTH, expand=True, padx=12, pady=12)
+
+        self.canvas = tk.Canvas(canvas_wrap, bg="#000000", highlightthickness=0)
+        self.canvas.pack(side="left", fill=tk.BOTH, expand=True)
+
+        self.v_scroll = tk.Scrollbar(canvas_wrap, orient="vertical", command=self.canvas.yview)
+        self.v_scroll.pack(side="right", fill="y")
+        self.canvas.configure(yscrollcommand=self.v_scroll.set)
 
         self.canvas.bind("<Button-1>", lambda e: self.canvas.scan_mark(e.x, e.y))
         self.canvas.bind("<B1-Motion>", lambda e: self.canvas.scan_dragto(e.x, e.y, gain=1))
         self.canvas.bind("<Configure>", self.on_canvas_resize)
+        self.bind("<Destroy>", lambda _e: self._unbind_scroll_events())
+        self._bind_scroll_events()
 
     def set_request_data(self, data):
         self.current_request = data or {}
