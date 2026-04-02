@@ -112,7 +112,7 @@ export default function CNCManagementPage() {
   const activeDevice = useMemo(() => devices.find((d) => d.id === activeTab), [devices, activeTab]);
   const activeQueue = activeDevice?.queue || [];
 
-  const sendMachineCommand = async (action: "E_STOP" | "TEST_PEN" | "HOME") => {
+  const sendMachineCommand = async (action: "E_STOP" | "UPDOWN" | "HOME") => {
     if (!activeDevice) return;
     try {
       setControlLoading(true);
@@ -140,7 +140,7 @@ export default function CNCManagementPage() {
   };
 
   const handleTestPen = () => {
-    void sendMachineCommand("TEST_PEN");
+    void sendMachineCommand("UPDOWN");
   };
 
   const handleGoHome = () => {
