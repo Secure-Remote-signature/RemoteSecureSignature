@@ -287,6 +287,8 @@ class DocumentReviewPage(tk.Frame):
                 headers=build_auth_headers(self.controller),
             )
             if res.status_code == 200:
+                if hasattr(self.controller, "end_signing_flow_lock"):
+                    self.controller.end_signing_flow_lock()
                 messagebox.showinfo("สำเร็จ", "ปฏิเสธคำร้องแล้ว")
                 self.controller.show_frame("DashboardPage")
             else:
